@@ -121,12 +121,12 @@
 		98B17486A139FF260AE96644 /* P256Arithmetic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = P256Arithmetic.swift; sourceTree = "<group>"; };
 		9998CF494701E93D37FF3413 /* TandemKitPumpManager+UI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TandemKitPumpManager+UI.swift"; sourceTree = "<group>"; };
 		A5622D39ED2D371239A58D35 /* BolusMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BolusMessages.swift; sourceTree = "<group>"; };
-		AFC929B8C8620F063089D248 /* LoopKitUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = LoopKitUI.framework; path = "../LoopKit/LoopKit.xcodeproj/build/Debug-iphoneos/LoopKitUI.framework"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AFC929B8C8620F063089D248 /* LoopKitUI.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = LoopKitUI.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		B179AE7EDD0F37FF4B2559A9 /* TandemKitTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TandemKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B64545F8C6FF45AB42F9031A /* AuthMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthMessages.swift; sourceTree = "<group>"; };
 		B740882F65C069639AFBEA3B /* TempRateMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempRateMessages.swift; sourceTree = "<group>"; };
 		CDB32DFE119408889BAB63DC /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
-		E751FFE939A0E4F154CCAEC5 /* LoopKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = LoopKit.framework; path = "../LoopKit/LoopKit.xcodeproj/build/Debug-iphoneos/LoopKit.framework"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E751FFE939A0E4F154CCAEC5 /* LoopKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = LoopKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		FD3003CFEB8118A810634AA5 /* StatusMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusMessages.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -536,7 +536,7 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/../LoopKit/build/Debug-iphoneos";
+				FRAMEWORK_SEARCH_PATHS = "$(BUILT_PRODUCTS_DIR) $(inherited)";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -560,6 +560,7 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				FRAMEWORK_SEARCH_PATHS = "$(BUILT_PRODUCTS_DIR) $(inherited)";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -583,7 +584,7 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/../LoopKit/build/Debug-iphoneos";
+				FRAMEWORK_SEARCH_PATHS = "$(BUILT_PRODUCTS_DIR) $(inherited)";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -679,6 +680,7 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				FRAMEWORK_SEARCH_PATHS = "$(BUILT_PRODUCTS_DIR) $(inherited)";
 				INFOPLIST_FILE = TandemKitPlugin/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -769,6 +771,7 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				FRAMEWORK_SEARCH_PATHS = "$(BUILT_PRODUCTS_DIR) $(inherited)";
 				INFOPLIST_FILE = TandemKitPlugin/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -795,6 +798,7 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				FRAMEWORK_SEARCH_PATHS = "$(BUILT_PRODUCTS_DIR) $(inherited)";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
