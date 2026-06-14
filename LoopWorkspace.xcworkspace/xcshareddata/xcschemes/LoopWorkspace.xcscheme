@@ -154,6 +154,20 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "961D0B3BA2A4C15EE33EFCDD"
+               BuildableName = "TandemKitPlugin.loopplugin"
+               BlueprintName = "TandemKitPlugin"
+               ReferencedContainer = "container:TandemKit/TandemKit.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "C1E34B5A29C7AD01009A50A5"
                BuildableName = "MinimedKitPlugin.loopplugin"
                BlueprintName = "MinimedKitPlugin"
@@ -537,6 +551,16 @@
                BuildableName = "MedtrumKitTests.xctest"
                BlueprintName = "MedtrumKitTests"
                ReferencedContainer = "container:MedtrumKit/MedtrumKit.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "AE5B0F7394C191D7D7EE3A87"
+               BuildableName = "TandemKitTests.xctest"
+               BlueprintName = "TandemKitTests"
+               ReferencedContainer = "container:TandemKit/TandemKit.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
