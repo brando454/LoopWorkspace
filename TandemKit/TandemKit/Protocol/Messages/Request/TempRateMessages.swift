@@ -1,4 +1,4 @@
-import CoreBluetooth
+@preconcurrency import CoreBluetooth
 import Foundation
 
 // Mobi-only: set a temporary basal rate.

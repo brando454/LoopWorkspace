@@ -1,4 +1,4 @@
-import CoreBluetooth
+@preconcurrency import CoreBluetooth
 import Foundation
 
 // Step 1 of 2-step bolus: request permission from the pump.

@@ -41,7 +41,7 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
     func enactBolus(units: Double, completion: @escaping (PumpManagerError?) -> Void) {
         ensureConnected { [weak self] error in
             guard error == nil else {
-                completion(.communication(error))
+                completion(.communication(error as? LocalizedError))
                 return
             }
             self?.peripheralManager?.enactBolus(units: units, completion: completion)
@@ -51,7 +51,7 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
     func cancelBolus(completion: @escaping (PumpManagerResult<DoseEntry?>) -> Void) {
         ensureConnected { [weak self] error in
             guard error == nil else {
-                completion(.failure(.communication(error)))
+                completion(.failure(.communication(error as? LocalizedError)))
                 return
             }
             self?.peripheralManager?.cancelBolus(completion: completion)
@@ -65,7 +65,7 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
     ) {
         ensureConnected { [weak self] error in
             guard error == nil else {
-                completion(.communication(error))
+                completion(.communication(error as? LocalizedError))
                 return
             }
             self?.peripheralManager?.enactTempBasal(

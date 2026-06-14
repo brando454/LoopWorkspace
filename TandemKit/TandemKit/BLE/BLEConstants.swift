@@ -1,4 +1,4 @@
-import CoreBluetooth
+@preconcurrency import CoreBluetooth
 
 // GATT service UUIDs for Tandem pumps.
 // TIP_SERVICE is present on both t:slim X2 and Mobi.

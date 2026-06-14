@@ -1,3 +1,4 @@
+@preconcurrency import CoreBluetooth
 import Foundation
 
 // V2 (Mobi) J-PAKE authentication messages. All use the AUTHORIZATION characteristic.

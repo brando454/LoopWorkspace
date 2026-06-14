@@ -1,4 +1,4 @@
-import Combine
+import HealthKit
 import LoopKit
 import os.log
 
@@ -28,7 +28,7 @@ public final class TandemPumpManager: PumpManager {
     public var supportedBolusVolumes: [Double] { TandemPumpManager.onboardingSupportedBolusVolumes }
     public var supportedMaximumBolusVolumes: [Double] { TandemPumpManager.onboardingSupportedMaximumBolusVolumes }
     public var maximumBasalScheduleEntryCount: Int { TandemPumpManager.onboardingMaximumBasalScheduleEntryCount }
-    public var minimumBasalScheduleEntryDuration: TimeInterval { .minutes(30) }
+    public var minimumBasalScheduleEntryDuration: TimeInterval { TimeInterval(30 * 60) }
     public var pumpRecordsBasalProfileStartEvents: Bool { false }
     public var pumpReservoirCapacity: Double { 300 }
 
@@ -52,7 +52,7 @@ public final class TandemPumpManager: PumpManager {
 
     private(set) var state: TandemPumpState
     private let stateQueue = DispatchQueue(label: "com.loopandlearn.TandemKit.stateQueue", qos: .utility)
-    private var statusObservers: [WeakBox<PumpManagerStatusObserver>] = []
+    private var statusObservers = WeakSynchronizedSet<PumpManagerStatusObserver>()
     private let logger = Logger(subsystem: "com.loopandlearn.TandemKit", category: "TandemPumpManager")
     private var bleManager: TandemBLEManager?
 
@@ -72,23 +72,17 @@ public final class TandemPumpManager: PumpManager {
     // MARK: - Status observers
 
     public func addStatusObserver(_ observer: PumpManagerStatusObserver, queue: DispatchQueue) {
-        stateQueue.async {
-            self.statusObservers.append(WeakBox(observer, queue: queue))
-        }
+        statusObservers.insert(observer, queue: queue)
     }
 
     public func removeStatusObserver(_ observer: PumpManagerStatusObserver) {
-        stateQueue.async {
-            self.statusObservers.removeAll { $0.value === observer as AnyObject }
-        }
+        statusObservers.removeElement(observer)
     }
 
     func notifyStatusDidChange() {
         let currentStatus = self.status
-        stateQueue.async {
-            for box in self.statusObservers {
-                box.queue.async { box.value?.pumpManager(self, didUpdate: currentStatus, oldStatus: currentStatus) }
-            }
+        statusObservers.forEach { observer in
+            observer.pumpManager(self, didUpdate: currentStatus, oldStatus: currentStatus)
         }
         delegateQueue.async { self.pumpManagerDelegate?.pumpManagerDidUpdateState(self) }
     }
@@ -115,7 +109,7 @@ public final class TandemPumpManager: PumpManager {
     }
 
     public func estimatedDuration(toBolus units: Double) -> TimeInterval {
-        .minutes(Double(units) / 1.5)  // ~1.5 U/min typical Tandem delivery rate
+        units / 1.5 * 60  // ~1.5 U/min typical Tandem delivery rate
     }
 
     public func enactBolus(
@@ -159,7 +153,10 @@ public final class TandemPumpManager: PumpManager {
         items scheduleItems: [RepeatingScheduleValue<Double>],
         completion: @escaping (_ result: Result<BasalRateSchedule, Error>) -> Void
     ) {
-        let schedule = BasalRateSchedule(dailyItems: scheduleItems)
+        guard let schedule = BasalRateSchedule(dailyItems: scheduleItems) else {
+            completion(.failure(PumpManagerError.configuration(nil)))
+            return
+        }
         stateQueue.async {
             self.state.basalRateSchedule = schedule
             self.delegateQueue.async {
@@ -173,11 +170,12 @@ public final class TandemPumpManager: PumpManager {
         limits deliveryLimits: DeliveryLimits,
         completion: @escaping (_ result: Result<DeliveryLimits, Error>) -> Void
     ) {
+        let iuPerHour = HKUnit.internationalUnit().unitDivided(by: .hour())
         stateQueue.async {
-            if let max = deliveryLimits.maximumBasalRate?.doubleValue(for: .internationalUnitsPerHour) {
+            if let max = deliveryLimits.maximumBasalRate?.doubleValue(for: iuPerHour) {
                 self.state.maximumBasalRateUnitsPerHour = max
             }
-            if let max = deliveryLimits.maximumBolus?.doubleValue(for: .internationalUnits) {
+            if let max = deliveryLimits.maximumBolus?.doubleValue(for: .internationalUnit()) {
                 self.state.maximumBolusUnits = max
             }
             completion(.success(deliveryLimits))
@@ -210,13 +208,26 @@ public final class TandemPumpManager: PumpManager {
     }
 }
 
-// MARK: - Helpers
+// MARK: - CustomDebugStringConvertible
 
-private class WeakBox<T: AnyObject> {
-    weak var value: T?
-    let queue: DispatchQueue
-    init(_ value: T, queue: DispatchQueue) {
-        self.value = value
-        self.queue = queue
+extension TandemPumpManager: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        "TandemPumpManager(serial: \(state.pumpSerialNumber ?? "unknown"), connection: \(state.connectionState))"
     }
 }
+
+// MARK: - AlertResponder
+
+extension TandemPumpManager: AlertResponder {
+    public func acknowledgeAlert(alertIdentifier: Alert.AlertIdentifier, completion: @escaping (Error?) -> Void) {
+        completion(nil)
+    }
+}
+
+// MARK: - AlertSoundVendor
+
+extension TandemPumpManager: AlertSoundVendor {
+    public func getSoundBaseURL() -> URL? { nil }
+    public func getSounds() -> [Alert.Sound] { [] }
+}
+

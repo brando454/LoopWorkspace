@@ -1,3 +1,5 @@
+import Foundation
+
 // CRC-16/CCITT-FALSE as used by pumpX2 (Bytes.calculateCRC16).
 // Polynomial: 0x1021, initial value: 0xFFFF, no input/output reflection.
 enum CRC16 {

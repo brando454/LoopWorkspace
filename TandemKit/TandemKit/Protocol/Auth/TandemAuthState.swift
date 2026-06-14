@@ -12,8 +12,7 @@ import Foundation
 //
 // EC-JPAKE (RFC 8236) is implemented in ECJPAKEContext.swift using pure-Swift P-256 arithmetic.
 
-@MainActor
-final class TandemAuthState: ObservableObject {
+final class TandemAuthState {
 
     enum State {
         case idle

@@ -115,7 +115,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         Task { [weak self] in
             guard let self else { return }
             do {
-                let firstRequest = try await MainActor.run { try self.authState!.begin() }
+                let firstRequest = try self.authState!.begin()
                 try await self.send(firstRequest)
             } catch {
                 self.logger.error("Auth failed: \(error)")
@@ -181,7 +181,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     private func dispatchResponse(opCode: UInt8, cargo: Data, on uuid: CBUUID) {
         // Check if this is an auth response
         if uuid == TandemCharacteristicUUID.authorization {
-            Task { @MainActor [weak self] in
+            Task { [weak self] in
                 guard let self, let authState = self.authState else { return }
                 do {
                     if let nextRequest = try authState.handleResponse(opCode: opCode, cargo: cargo) {
@@ -233,7 +233,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                 // Response handling is asynchronous via dispatchResponse — full impl pending
                 completion(nil)
             } catch {
-                completion(.communication(error))
+                completion(.communication(error as? LocalizedError))
             }
         }
     }
@@ -249,7 +249,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                 try await self.send(CancelBolusRequest(bolusId: bolusId))
                 completion(.success(nil))
             } catch {
-                completion(.failure(.communication(error)))
+                completion(.failure(.communication(error as? LocalizedError)))
             }
         }
     }
@@ -275,7 +275,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                 try await self.send(SetTempRateRequest(durationMinutes: durationMinutes, percent: percent))
                 completion(nil)
             } catch {
-                completion(.communication(error))
+                completion(.communication(error as? LocalizedError))
             }
         }
     }

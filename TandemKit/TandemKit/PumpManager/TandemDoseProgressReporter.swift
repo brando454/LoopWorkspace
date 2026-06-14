@@ -4,6 +4,8 @@ import LoopKit
 final class TandemDoseProgressReporter: DoseProgressReporter {
     weak var observer: DoseProgressObserver?
 
+    var progress: DoseProgress = DoseProgress(deliveredUnits: 0, percentComplete: 0)
+
     private let pumpManager: TandemPumpManager
     private let queue: DispatchQueue
 
