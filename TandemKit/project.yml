@@ -79,6 +79,14 @@ targets:
       - path: TandemKitPlugin
     info:
       path: TandemKitPlugin/Info.plist
+      properties:
+        # These keys are how Loop discovers the plugin as a pump manager at
+        # runtime. They must be declared here: XcodeGen regenerates Info.plist
+        # from this block plus its CFBundle defaults, so any key only present in
+        # the checked-in file is dropped on the next `xcodegen generate`.
+        NSPrincipalClass: TandemKitPlugin
+        com.loopkit.Loop.PumpManagerDisplayName: Tandem Mobi
+        com.loopkit.Loop.PumpManagerIdentifier: TandemMobi
     settings:
       base:
         APPLICATION_EXTENSION_API_ONLY: YES
