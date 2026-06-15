@@ -76,13 +76,11 @@ final class TandemMessageVectorTests: XCTestCase {
     //   asserts: totalVolume=1000, bolusID=10650, bolusTypeBitmask=8, foodVolume=0.
     //   logical cargo first 9 bytes = e8 03 00 00 | 9a 29 | 00 00 | 08, rest 0.
     //
-    // This test PINS TWO KNOWN BUGS in InitiateBolusRequest.init(units:bolusId:):
-    //   (1) it sets foodVolume = units*1000 — pumpX2 says foodVolume must be 0
-    //       for a bolus with no carbs (else the pump double-books the volume).
-    //   (2) it sets bolusTypeBitmask = 0 — a standard food bolus is bitmask 8.
-    // Until init is fixed, this test FAILS. That failure is the point: it is the
-    // regression guard. Do NOT relax this assertion to make it green — fix init.
-    func testInitiateBolusRequest_1u_PINS_KNOWN_ENCODER_BUGS() throws {
+    // Regression guard for the InitiateBolusRequest.init(units:bolusId:) fix:
+    // foodVolume must be 0 (not units*1000, which double-booked the dose) and
+    // bolusTypeBitmask must be 8 (FOOD2), not 0. Do NOT relax these assertions —
+    // they encode the bytes a real pump expects for a standard override bolus.
+    func testInitiateBolusRequest_1u_matchesPumpX2Capture() throws {
         let req = InitiateBolusRequest(units: 1.0, bolusId: 10650)
         let expected = bytes([
             -24, 3, 0, 0,   // totalVolume = 1000 mU (LE)

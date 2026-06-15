@@ -50,11 +50,30 @@ struct InitiateBolusRequest: TandemRequest {
     let extendedSeconds: UInt32    // 0 for standard bolus
 
     // Convenience initializer for a simple standard bolus.
+    //
+    // Byte layout verified against jwoglom/pumpX2 @ 9bfc6691
+    // (InitiateBolusRequestTest.testInitiateBolusRequest_ID10650_1u): a 1.0 U
+    // override bolus with no carbs encodes as totalVolume=1000, foodVolume=0,
+    // bolusTypeBitmask=8.
+    //
+    // Two corrections from the original code:
+    //   - foodVolume MUST be 0 here, not units*1000. The pump treats foodVolume
+    //     as a separate component of the total; duplicating the volume there made
+    //     the pump double-book the dose.
+    //   - bolusTypeBitmask is 8 (FOOD2), the standard manual food-bolus type the
+    //     pump expects for a GUI/override bolus, not 0.
+    //
+    // ASSUMPTION TO REVISIT when Loop drives dosing for real: this hardcodes every
+    // bolus as FOOD2 with no carb/BG/IOB/correction context. A correction bolus,
+    // a carb-entered meal bolus, or an extended bolus needs a different bitmask and
+    // a populated foodVolume/correctionVolume split. Add a fuller initializer that
+    // takes those inputs before wiring real Loop-commanded boluses; do not let
+    // "everything is FOOD2" become a permanent assumption.
     init(units: Double, bolusId: UInt16) {
         self.totalVolume = UInt32(units * 1000)
         self.bolusId = bolusId
-        bolusTypeBitmask = 0
-        foodVolume = UInt32(units * 1000)
+        bolusTypeBitmask = 8   // FOOD2 (standard manual food bolus) per pumpX2
+        foodVolume = 0         // separate component; 0 for a no-carb override bolus
         correctionVolume = 0
         bolusCarbs = 0
         bolusBG = 0

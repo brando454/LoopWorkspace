@@ -33,14 +33,20 @@ xcodebuild test \
 project-wide. If the framework is not found, confirm LoopKit has built into
 `BUILT_PRODUCTS_DIR` first (build the `TandemKit` scheme once).
 
-## Two tests fail ON PURPOSE
+## InitiateBolus encoder fix (regression guard)
 
-`testInitiateBolusRequest_1u_PINS_KNOWN_ENCODER_BUGS` encodes the CORRECT pump
-bytes and will fail until `InitiateBolusRequest.init(units:bolusId:)` is fixed:
+`testInitiateBolusRequest_1u_matchesPumpX2Capture` guards a fix to
+`InitiateBolusRequest.init(units:bolusId:)`:
 
-1. `foodVolume` is currently set to `units * 1000`; pumpX2 requires `0` for a
-   bolus with no carbs (otherwise the pump double-books the volume).
-2. `bolusTypeBitmask` is currently `0`; a standard food bolus is `8`.
+1. `foodVolume` must be `0`, not `units * 1000` (the old value made the pump
+   double-book the dose, since the pump treats foodVolume as a separate
+   component of the total).
+2. `bolusTypeBitmask` must be `8` (FOOD2), not `0`.
 
-That failing test is the regression guard for the fix. Do not relax the
-assertion to make it green — fix the initializer.
+Both are now fixed in source. Do not relax the assertion — it encodes the bytes a
+real pump expects for a standard override bolus.
+
+The initializer still hardcodes every bolus as FOOD2 with no carb/BG/IOB context.
+That is correct for the current no-carb override path but must be replaced with a
+fuller initializer (per-type bitmask, foodVolume/correctionVolume split) before
+Loop drives meal or correction boluses. See the note in `BolusMessages.swift`.
