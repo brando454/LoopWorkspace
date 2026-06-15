@@ -474,6 +474,9 @@ struct TandemP256Point: Equatable {
         return d
     }
 
+}
+
+extension TandemP256Point {
     // Deserialize from uncompressed x9.63
     init?(x963 data: Data) {
         guard data.count == 65, data[0] == 0x04 else { return nil }
