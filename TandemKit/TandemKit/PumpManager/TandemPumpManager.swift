@@ -212,7 +212,7 @@ public final class TandemPumpManager: PumpManager {
 
 extension TandemPumpManager: CustomDebugStringConvertible {
     public var debugDescription: String {
-        "TandemPumpManager(serial: \(state.pumpSerialNumber ?? "unknown"), connection: \(state.connectionState))"
+        "TandemPumpManager(serial: \(state.pumpSerialNumber), connection: \(state.connectionState))"
     }
 }
 

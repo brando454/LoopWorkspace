@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 // EC-JPAKE (RFC 8236) over P-256 for Tandem Mobi initial pairing.

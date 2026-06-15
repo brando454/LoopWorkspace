@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 // Pure-Swift P-256 arithmetic for EC-JPAKE.
