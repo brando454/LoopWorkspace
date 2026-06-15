@@ -138,11 +138,21 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
     }
 
     public func suspendDelivery(completion: @escaping (_ error: Error?) -> Void) {
-        completion(PumpManagerError.configuration(nil))  // TODO: implement
+        bleManager?.suspendDelivery { [weak self] error in
+            if error == nil {
+                self?.updateState { $0.basalState = .suspended }
+            }
+            completion(error)
+        }
     }
 
     public func resumeDelivery(completion: @escaping (_ error: Error?) -> Void) {
-        completion(PumpManagerError.configuration(nil))  // TODO: implement
+        bleManager?.resumeDelivery { [weak self] error in
+            if error == nil {
+                self?.updateState { $0.basalState = .active }
+            }
+            completion(error)
+        }
     }
 
     public func syncBasalRateSchedule(

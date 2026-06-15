@@ -276,11 +276,61 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.send(BolusPermissionRequest())
-                // Response handling is asynchronous via dispatchResponse — full impl pending
+                // Step 1: request permission and get bolusId
+                let permData = try await sendAndReceive(BolusPermissionRequest(),
+                                                       responseOpCode: BolusPermissionResponse.opCode)
+                guard let perm = BolusPermissionResponse(cargo: permData), perm.permissionGranted else {
+                    completion(.communication(nil))
+                    return
+                }
+                // Step 2: initiate the bolus using the granted bolusId
+                let initData = try await sendAndReceive(InitiateBolusRequest(units: units, bolusId: perm.bolusId),
+                                                       responseOpCode: InitiateBolusResponse.opCode)
+                guard let resp = InitiateBolusResponse(cargo: initData), resp.success else {
+                    completion(.communication(nil))
+                    return
+                }
                 completion(nil)
             } catch {
                 completion(.communication(error as? LocalizedError))
+            }
+        }
+    }
+
+    func suspendDelivery(completion: @escaping (Error?) -> Void) {
+        // Suspend via 0% temp rate for the maximum 72-hour duration.
+        // Note: requires Control-IQ to be off on the pump.
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let data = try await sendAndReceive(
+                    SetTempRateRequest(durationMinutes: 4320, percent: 0),
+                    responseOpCode: SetTempRateResponse.opCode
+                )
+                guard let resp = SetTempRateResponse(cargo: data), resp.success else {
+                    completion(PumpManagerError.communication(nil))
+                    return
+                }
+                completion(nil)
+            } catch {
+                completion(error)
+            }
+        }
+    }
+
+    func resumeDelivery(completion: @escaping (Error?) -> Void) {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let data = try await sendAndReceive(StopTempRateRequest(),
+                                                   responseOpCode: StopTempRateResponse.opCode)
+                guard let resp = StopTempRateResponse(cargo: data), resp.success else {
+                    completion(PumpManagerError.communication(nil))
+                    return
+                }
+                completion(nil)
+            } catch {
+                completion(error)
             }
         }
     }

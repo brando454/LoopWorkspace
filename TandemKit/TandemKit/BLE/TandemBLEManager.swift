@@ -76,6 +76,20 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
         }
     }
 
+    func suspendDelivery(completion: @escaping (Error?) -> Void) {
+        ensureConnected { [weak self] error in
+            guard error == nil else { completion(error); return }
+            self?.peripheralManager?.suspendDelivery(completion: completion)
+        }
+    }
+
+    func resumeDelivery(completion: @escaping (Error?) -> Void) {
+        ensureConnected { [weak self] error in
+            guard error == nil else { completion(error); return }
+            self?.peripheralManager?.resumeDelivery(completion: completion)
+        }
+    }
+
     // MARK: - Connection management
 
     private func ensureConnected(_ completion: @escaping (Error?) -> Void) {
