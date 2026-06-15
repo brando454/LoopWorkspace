@@ -37,8 +37,8 @@ extension TandemPumpManager: PumpManagerUI {
     public func deliveryUncertaintyRecoveryViewController(
         colorPalette: LoopUIColorPalette,
         allowDebugFeatures: Bool
-    ) -> (UIViewController & CompletionNotifying)? {
-        nil
+    ) -> (UIViewController & CompletionNotifying) {
+        TandemDeliveryUncertaintyVC()
     }
 
     public var smallImage: UIImage? { nil }
@@ -52,4 +52,14 @@ extension TandemPumpManager: PumpManagerUI {
     public static func createHUDView(rawValue: HUDProvider.HUDViewRawState) -> BaseHUDView? { nil }
 
     public static var onboardingImage: UIImage? { nil }
+
+    // MARK: - PumpStatusIndicator
+
+    public var pumpStatusHighlight: DeviceStatusHighlight? { nil }
+    public var pumpLifecycleProgress: DeviceLifecycleProgress? { nil }
+    public var pumpStatusBadge: DeviceStatusBadge? { nil }
+}
+
+private final class TandemDeliveryUncertaintyVC: UIViewController, CompletionNotifying {
+    weak var completionDelegate: CompletionDelegate?
 }

@@ -50,7 +50,7 @@ public final class TandemPumpManager: PumpManager {
 
     // MARK: - Internal
 
-    private(set) var state: TandemPumpState
+    public private(set) var state: TandemPumpState
     private let stateQueue = DispatchQueue(label: "com.loopandlearn.TandemKit.stateQueue", qos: .utility)
     private var statusObservers = WeakSynchronizedSet<PumpManagerStatusObserver>()
     private let logger = Logger(subsystem: "com.loopandlearn.TandemKit", category: "TandemPumpManager")
