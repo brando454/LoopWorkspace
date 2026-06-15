@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 // EC-JPAKE (RFC 8236) over P-256 for Tandem Mobi initial pairing.
@@ -145,7 +144,7 @@ final class ECJPAKEContext {
         data.append(V.x963Bytes() ?? Data([0]))
         data.append(X.x963Bytes() ?? Data([0]))
         data.append(signerID)
-        let digest = Data(SHA256.hash(data: data))
+        let digest = sha256(data)
         return Fq(bytes: digest) ?? .zero
     }
 

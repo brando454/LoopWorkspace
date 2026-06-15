@@ -1,4 +1,4 @@
-import CryptoKit
+import CommonCrypto
 import Foundation
 
 // Pure-Swift P-256 arithmetic for EC-JPAKE.
@@ -483,10 +483,17 @@ struct TandemP256Point: Equatable {
     }
 }
 
-// MARK: - SHA-256 helper (wraps CryptoKit)
+// MARK: - SHA-256 helper (wraps CommonCrypto)
 
 func sha256(_ data: Data) -> Data {
-    Data(SHA256.hash(data: data))
+    var digest = Data(count: Int(CC_SHA256_DIGEST_LENGTH))
+    data.withUnsafeBytes { inPtr in
+        digest.withUnsafeMutableBytes { outPtr in
+            _ = CC_SHA256(inPtr.baseAddress, CC_LONG(data.count),
+                          outPtr.bindMemory(to: UInt8.self).baseAddress)
+        }
+    }
+    return digest
 }
 
 // Hash-to-scalar: hash data, reduce mod q

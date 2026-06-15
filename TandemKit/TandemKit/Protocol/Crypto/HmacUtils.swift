@@ -1,5 +1,4 @@
 import CommonCrypto
-import CryptoKit
 import Foundation
 
 // HMAC utilities ported from pumpX2 HmacSha256.java and Packetize.java.
@@ -17,9 +16,18 @@ enum HmacUtils {
     static func hmacSHA256(key: Data, data: Data) -> Data {
         let normalizedKey  = mod255(key)
         let normalizedData = mod255(data)
-        let symmetricKey = SymmetricKey(data: normalizedKey)
-        let mac = HMAC<SHA256>.authenticationCode(for: normalizedData, using: symmetricKey)
-        return Data(mac)
+        var result = Data(count: Int(CC_SHA256_DIGEST_LENGTH))
+        result.withUnsafeMutableBytes { outPtr in
+            normalizedKey.withUnsafeBytes { keyPtr in
+                normalizedData.withUnsafeBytes { dataPtr in
+                    CCHmac(CCHmacAlgorithm(kCCHmacAlgSHA256),
+                           keyPtr.baseAddress, normalizedKey.count,
+                           dataPtr.baseAddress, normalizedData.count,
+                           outPtr.baseAddress)
+                }
+            }
+        }
+        return result
     }
 
     // HMAC-SHA1 used for signing CONTROL characteristic messages.
