@@ -2,6 +2,7 @@ import LoopKitUI
 import TandemKit
 import TandemKitUI
 
+@objc(TandemKitPlugin)
 class TandemKitPlugin: NSObject, PumpManagerUIPlugin {
     public var pumpManagerType: PumpManagerUI.Type? {
         TandemPumpManager.self

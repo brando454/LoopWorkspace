@@ -18,5 +18,11 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSPrincipalClass</key>
+	<string>TandemKitPlugin</string>
+	<key>com.loopkit.Loop.PumpManagerDisplayName</key>
+	<string>Tandem Mobi</string>
+	<key>com.loopkit.Loop.PumpManagerIdentifier</key>
+	<string>TandemMobi</string>
 </dict>
 </plist>
