@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // Pure-Swift P-256 arithmetic for EC-JPAKE.
@@ -349,18 +350,18 @@ private let p256_Gx = Fp(w: w8From(bigEndianHex:
 private let p256_Gy = Fp(w: w8From(bigEndianHex:
     "4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5"))
 
-struct P256Point: Equatable {
+struct TandemP256Point: Equatable {
     var x: Fp
     var y: Fp
     var z: Fp   // z == zero means point at infinity
 
-    static let infinity = P256Point(x: .one, y: .one, z: .zero)
-    static let generator = P256Point(x: p256_Gx, y: p256_Gy, z: .one)
+    static let infinity = TandemP256Point(x: .one, y: .one, z: .zero)
+    static let generator = TandemP256Point(x: p256_Gx, y: p256_Gy, z: .one)
 
     var isInfinity: Bool { z == .zero }
 
     // Jacobian doubling: 2P
-    func doubled() -> P256Point {
+    func doubled() -> TandemP256Point {
         if isInfinity { return .infinity }
         // Algorithm from https://hyperelliptic.org/EFD/g1p/auto-shortw-jacobian-3.html#doubling-dbl-2001-b
         let a_coeff = Fp(w: p256_a)
@@ -401,12 +402,12 @@ struct P256Point: Equatable {
             var (r3, c3) = add256(r2, r2); if c3 > 0 || cmp(r3, p256_p) >= 0 { r3 = sub256(r3, p256_p) }
             return Fp(w: r3)  // 8 * gamma²
         }())
-        return P256Point(x: X3, y: Y3_clean, z: Z3f)
+        return TandemP256Point(x: X3, y: Y3_clean, z: Z3f)
     }
 
     // Jacobian mixed addition: self (Jacobian) + other (Jacobian)
     // Using add-2007-bl from EFD
-    func adding(_ other: P256Point) -> P256Point {
+    func adding(_ other: TandemP256Point) -> TandemP256Point {
         if isInfinity { return other }
         if other.isInfinity { return self }
 
@@ -433,12 +434,12 @@ struct P256Point: Equatable {
                           return Fp(w: r) }() * H2)
         let Y3 = Fp.sub(R * Fp.sub(U1 * H2, X3), S1 * H3)
         let Z3 = H * z * other.z
-        return P256Point(x: X3, y: Y3, z: Z3)
+        return TandemP256Point(x: X3, y: Y3, z: Z3)
     }
 
     // Scalar multiplication: k * self, k is Fq scalar (little-endian limbs)
-    func multiplied(by k: Fq) -> P256Point {
-        var result = P256Point.infinity
+    func multiplied(by k: Fq) -> TandemP256Point {
+        var result = TandemP256Point.infinity
         var addend = self
         for limb in k.w {  // little-endian: w[0] first
             var bits = limb
@@ -451,8 +452,8 @@ struct P256Point: Equatable {
         return result
     }
 
-    func negated() -> P256Point {
-        P256Point(x: x, y: y.negated(), z: z)
+    func negated() -> TandemP256Point {
+        TandemP256Point(x: x, y: y.negated(), z: z)
     }
 
     // Convert to affine (x, y). Returns nil for point at infinity.
@@ -495,6 +496,6 @@ func hashToScalar(_ data: Data) -> Fq {
 }
 
 // Encode a point for ZKP hashing (x9.63 or "infinity" sentinel)
-private func encodePointForHash(_ p: P256Point) -> Data {
+private func encodePointForHash(_ p: TandemP256Point) -> Data {
     p.x963Bytes() ?? Data([0x00])
 }

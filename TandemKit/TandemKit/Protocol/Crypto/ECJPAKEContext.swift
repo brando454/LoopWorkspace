@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // EC-JPAKE (RFC 8236) over P-256 for Tandem Mobi initial pairing.
@@ -22,8 +23,8 @@ final class ECJPAKEContext {
     private let password: Fq   // pairing code as a scalar
 
     // Received server points (stored after processing 1a+1b responses)
-    private var X3: P256Point?
-    private var X4: P256Point?
+    private var X3: TandemP256Point?
+    private var X4: TandemP256Point?
 
     // Stored for fast-reconnect derivation
     private(set) var derivedKeyMaterial: Data?
@@ -41,8 +42,8 @@ final class ECJPAKEContext {
 
     // Returns 330 bytes: bytes[0..<165] = part1, bytes[165..<330] = part2
     func clientRound1() throws -> Data {
-        let X1 = P256Point.generator.multiplied(by: x1)
-        let X2 = P256Point.generator.multiplied(by: x2)
+        let X1 = TandemP256Point.generator.multiplied(by: x1)
+        let X2 = TandemP256Point.generator.multiplied(by: x2)
         let zkp1 = makeZKP(x: x1, X: X1, generator: .generator)
         let zkp2 = makeZKP(x: x2, X: X2, generator: .generator)
         var out = Data()
@@ -73,7 +74,7 @@ final class ECJPAKEContext {
     func clientRound2() throws -> Data {
         guard let X3 = X3, let X4 = X4 else { throw ECJPAKEError.invalidServerPoint }
         // Generator for round 2: G' = X1 + X3 + X4
-        let X1 = P256Point.generator.multiplied(by: x1)
+        let X1 = TandemP256Point.generator.multiplied(by: x1)
         let Gprime = X1.adding(X3).adding(X4)
         // Client key share: A = G' * (x2 * password)
         let x2s = Fq(w: modQ(mul256(x2.w, password.w)))
@@ -87,8 +88,8 @@ final class ECJPAKEContext {
     func processRound2AndDeriveSecret(_ data: Data) throws -> Data {
         guard let X3 = X3, let X4 = X4 else { throw ECJPAKEError.invalidServerPoint }
         // Generator for server round 2: G'' = X1 + X2 + X3
-        let X1 = P256Point.generator.multiplied(by: x1)
-        let X2 = P256Point.generator.multiplied(by: x2)
+        let X1 = TandemP256Point.generator.multiplied(by: x1)
+        let X2 = TandemP256Point.generator.multiplied(by: x2)
         let Gprime2 = X1.adding(X2).adding(X3)
 
         // Decode B (server's key share). Server may use different signerID length → just grab point+zkp
@@ -108,12 +109,12 @@ final class ECJPAKEContext {
     // MARK: - Schnorr ZKP
 
     struct ZKP {
-        let V: P256Point   // commitment point
+        let V: TandemP256Point   // commitment point
         let b: Fq        // response scalar
     }
 
     // Prove knowledge of x such that X = x * G
-    private func makeZKP(x: Fq, X: P256Point, generator: P256Point) -> ZKP {
+    private func makeZKP(x: Fq, X: TandemP256Point, generator: TandemP256Point) -> ZKP {
         let v = Fq.random()
         let V = generator.multiplied(by: v)
         let h = zkpChallenge(generator: generator, V: V, X: X, signerID: signerID)
@@ -124,7 +125,7 @@ final class ECJPAKEContext {
     }
 
     // Verify ZKP: check V == b*G + h*X
-    private static func verifyZKP(_ zkp: ZKP, X: P256Point, generator: P256Point, signerID: Data?) -> Bool {
+    private static func verifyZKP(_ zkp: ZKP, X: TandemP256Point, generator: TandemP256Point, signerID: Data?) -> Bool {
         let sid = signerID ?? Data()
         let h = zkpChallenge(generator: generator, V: zkp.V, X: X, signerID: sid)
         // Expected: V == b*G + h*X
@@ -138,7 +139,7 @@ final class ECJPAKEContext {
     }
 
     // Fiat-Shamir: h = hash(G || V || X || signerID)
-    private static func zkpChallenge(generator: P256Point, V: P256Point, X: P256Point, signerID: Data) -> Fq {
+    private static func zkpChallenge(generator: TandemP256Point, V: TandemP256Point, X: TandemP256Point, signerID: Data) -> Fq {
         var data = Data()
         data.append(generator.x963Bytes() ?? Data([0]))
         data.append(V.x963Bytes() ?? Data([0]))
@@ -149,14 +150,14 @@ final class ECJPAKEContext {
     }
 
     // Non-static version forwarding to static (for makeZKP)
-    private func zkpChallenge(generator: P256Point, V: P256Point, X: P256Point, signerID: Data) -> Fq {
+    private func zkpChallenge(generator: TandemP256Point, V: TandemP256Point, X: TandemP256Point, signerID: Data) -> Fq {
         ECJPAKEContext.zkpChallenge(generator: generator, V: V, X: X, signerID: signerID)
     }
 
     // MARK: - Wire encoding/decoding
 
     // Encode: point(65) || V(65) || b(32) || signerID_len(1) || signerID(n)
-    private func encodeChunk(point: P256Point, zkp: ZKP) -> Data {
+    private func encodeChunk(point: TandemP256Point, zkp: ZKP) -> Data {
         var d = Data()
         d.append(point.x963Bytes()!)
         d.append(zkp.V.x963Bytes()!)
@@ -167,14 +168,14 @@ final class ECJPAKEContext {
     }
 
     // Decode and verify a chunk. peerID: nil means skip ZKP verification (store for later).
-    private func decodeAndVerifyChunk(_ data: Data, generator: P256Point, peerID: Data?) throws -> (P256Point, ZKP) {
+    private func decodeAndVerifyChunk(_ data: Data, generator: TandemP256Point, peerID: Data?) throws -> (TandemP256Point, ZKP) {
         guard data.count >= 163 else { throw ECJPAKEError.invalidServerPoint }
         let pointBytes = data[data.startIndex..<data.index(data.startIndex, offsetBy: 65)]
         let vBytes     = data[data.index(data.startIndex, offsetBy: 65)..<data.index(data.startIndex, offsetBy: 130)]
         let bBytes     = data[data.index(data.startIndex, offsetBy: 130)..<data.index(data.startIndex, offsetBy: 162)]
 
-        guard let X = P256Point(x963: Data(pointBytes)),
-              let V = P256Point(x963: Data(vBytes)),
+        guard let X = TandemP256Point(x963: Data(pointBytes)),
+              let V = TandemP256Point(x963: Data(vBytes)),
               let b = Fq(bytes: Data(bBytes)) else { throw ECJPAKEError.invalidServerPoint }
 
         let zkp = ZKP(V: V, b: b)
