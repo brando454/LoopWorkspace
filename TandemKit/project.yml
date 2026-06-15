@@ -1,5 +1,16 @@
 name: TandemKit
 
+# LoopKit lives in a sibling project inside LoopWorkspace.xcworkspace.
+# We depend on its iOS framework target explicitly (target: LoopKit/LoopKit)
+# rather than as an `implicit` framework. The explicit target dependency makes
+# Xcode build the real LoopKit framework (with its .swiftmodule) and link it,
+# and it disambiguates the iOS `LoopKit` target from the `LoopKit-watchOS`
+# target in the same project. Implicit-dependency scanning stays OFF in the
+# scheme so the deprecated WatchApp Extension is never pulled in.
+projectReferences:
+  LoopKit:
+    path: ../LoopKit/LoopKit.xcodeproj
+
 options:
   bundleIdPrefix: com.loopandlearn
   deploymentTarget:
@@ -33,9 +44,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.loopandlearn.TandemKit
         FRAMEWORK_SEARCH_PATHS: "$(BUILT_PRODUCTS_DIR) $(inherited)"
     dependencies:
-      - framework: LoopKit.framework
+      - target: LoopKit/LoopKit
         embed: false
-        implicit: true
+        link: true
 
   TandemKitUI:
     type: framework
@@ -54,12 +65,12 @@ targets:
     dependencies:
       - target: TandemKit
         embed: false
-      - framework: LoopKit.framework
+      - target: LoopKit/LoopKit
         embed: false
-        implicit: true
-      - framework: LoopKitUI.framework
+        link: true
+      - target: LoopKit/LoopKitUI
         embed: false
-        implicit: true
+        link: true
 
   TandemKitPlugin:
     type: framework
@@ -93,13 +104,28 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.loopandlearn.TandemKitTests
-        # TandemDoseReporterTests imports LoopKit (DoseEntry/NewPumpEvent).
-        # transitivelyLinkDependencies is off project-wide, so the test target
-        # must link LoopKit explicitly and know where to find the framework.
+        # Unit-test bundle has no hand-written Info.plist; let Xcode generate one.
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
         FRAMEWORK_SEARCH_PATHS: "$(BUILT_PRODUCTS_DIR) $(inherited)"
     dependencies:
       - target: TandemKit
         embed: false
-      - framework: LoopKit.framework
+      - target: LoopKit/LoopKit
         embed: false
-        implicit: true
+        link: true
+
+schemes:
+  TandemKit:
+    build:
+      # Implicit-dependency scanning OFF so Xcode does not pull in the
+      # deprecated WatchApp Extension from the full workspace. LoopKit is built
+      # because TandemKit/TandemKitTests depend on it explicitly above.
+      buildImplicitDependencies: false
+      targets:
+        TandemKit: all
+        TandemKitTests: [test]
+    test:
+      targets:
+        - TandemKitTests
+      gatherCoverageData: false
