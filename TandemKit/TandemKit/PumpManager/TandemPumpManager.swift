@@ -198,7 +198,7 @@ public final class TandemPumpManager: PumpManager {
     }
 
     // Internal: update state and notify Loop.
-    func updateState(_ block: (TandemPumpState) -> Void) {
+    func updateState(_ block: @escaping (TandemPumpState) -> Void) {
         stateQueue.async {
             block(self.state)
             self.delegateQueue.async {

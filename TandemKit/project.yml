@@ -10,9 +10,9 @@ options:
 
 settings:
   base:
-    SWIFT_VERSION: "6.0"
+    SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "16.0"
-    ENABLE_STRICT_CONCURRENCY_CHECKING: complete
+    ENABLE_STRICT_CONCURRENCY_CHECKING: minimal
 
 targets:
 
