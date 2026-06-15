@@ -193,6 +193,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                             $0.serverNonce3Hex = authState.serverNonce3Hex
                             $0.connectionState = .connected
                         }
+                        self.bleManager?.authenticationCompleted()
                     }
                 } catch {
                     self.logger.error("Auth response error: \(error)")

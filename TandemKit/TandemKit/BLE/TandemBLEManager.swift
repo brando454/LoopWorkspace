@@ -92,8 +92,17 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
 
     // MARK: - Connection management
 
+    // Called by TandemPeripheralManager once EC-JPAKE auth succeeds.
+    func authenticationCompleted() {
+        guard let completion = connectCompletion else { return }
+        connectCompletion = nil
+        completion(nil)
+    }
+
     private func ensureConnected(_ completion: @escaping (Error?) -> Void) {
-        if let p = peripheral, p.state == .connected {
+        // Require both BLE link AND completed auth before calling completion.
+        if let p = peripheral, p.state == .connected,
+           pumpManager?.state.connectionState == .connected {
             completion(nil)
             return
         }
@@ -101,7 +110,10 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
         connectCompletion = completion
 
         if let p = peripheral {
-            central.connect(p)
+            if p.state != .connected {
+                central.connect(p)
+            }
+            // else: BLE link up but auth not yet done — wait for authenticationCompleted()
             return
         }
 
