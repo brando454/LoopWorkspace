@@ -85,13 +85,13 @@ final class TandemUICoordinator: UINavigationController,
     private func handlePairingCodeEntered(_ code: String) {
         let state = TandemPumpState(basalRateSchedule: setupSettings?.basalSchedule)
         state.pairingCode = code
+        state.isOnboarded = true
         let manager = TandemPumpManager(state: state)
         pumpManager = manager
         pumpManagerOnboardingDelegate?.pumpManagerOnboarding(didCreatePumpManager: manager)
 
-        // Show a brief "Searching for pump…" screen then signal done.
-        // The BLE manager will start scanning when Loop calls ensureCurrentPumpData.
         let done = TandemConnectingView {
+            self.pumpManagerOnboardingDelegate?.pumpManagerOnboarding(didOnboardPumpManager: manager)
             self.completionDelegate?.completionNotifyingDidComplete(self)
         }
         pushViewController(hostingController(rootView: done), animated: true)
