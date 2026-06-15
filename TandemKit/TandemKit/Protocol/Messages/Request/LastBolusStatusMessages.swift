@@ -34,16 +34,38 @@ struct LastBolusStatusV2Request: TandemRequest {
     func cargo() -> Data { Data() }
 }
 
-// Status of the bolus as reported by the pump. Values from pumpX2 BolusStatus enum.
+// Status of the bolus as reported by the pump.
+//
+// Values mirror pumpX2 LastBolusStatusAbstractResponse.BolusStatus EXACTLY
+// (jwoglom/pumpX2 @ 9bfc6691). Getting these backwards is a safety issue: a
+// user-terminated partial bolus (id 0) must NOT be read as "completed". The
+// upstream enum carries a "this is guesswork and is incomplete" note, so treat
+// unknown ids defensively rather than assuming completion.
+//
+//   0 STOPPED_USER_TERMINATED   (delivered may be < requested)
+//   1 STOPPED_ALARM
+//   2 STOPPED_MALFUNCTION
+//   3 COMPLETE                  (delivered == requested)
+//   4 STOPPED_WIRELESS
+//   5 REJECTED_WIRELESS
+//   6 TERMINATED_PLGS           (predictive low-glucose suspend)
 enum TandemBolusCompletionStatus: UInt8 {
-    case completed   = 0   // delivered in full
-    case interrupted = 1   // stopped early (delivered < requested)
-    case canceling   = 2
-    case unknown     = 0xFF
+    case stoppedUserTerminated = 0
+    case stoppedAlarm          = 1
+    case stoppedMalfunction    = 2
+    case complete              = 3
+    case stoppedWireless       = 4
+    case rejectedWireless      = 5
+    case terminatedPLGS        = 6
+    case unknown               = 0xFF
 
     init(rawByte: UInt8) {
         self = TandemBolusCompletionStatus(rawValue: rawByte) ?? .unknown
     }
+
+    // True only for a fully-delivered bolus. Everything else delivered less than
+    // requested (or nothing), so callers must reconcile on delivered volume.
+    var deliveredInFull: Bool { self == .complete }
 }
 
 struct LastBolusStatusV2Response: TandemResponse {

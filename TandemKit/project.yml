@@ -93,6 +93,13 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.loopandlearn.TandemKitTests
+        # TandemDoseReporterTests imports LoopKit (DoseEntry/NewPumpEvent).
+        # transitivelyLinkDependencies is off project-wide, so the test target
+        # must link LoopKit explicitly and know where to find the framework.
+        FRAMEWORK_SEARCH_PATHS: "$(BUILT_PRODUCTS_DIR) $(inherited)"
     dependencies:
       - target: TandemKit
         embed: false
+      - framework: LoopKit.framework
+        embed: false
+        implicit: true
