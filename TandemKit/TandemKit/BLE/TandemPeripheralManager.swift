@@ -214,13 +214,60 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         Task { [weak self] in
             guard let self, let pm = self.pumpManager else { return }
             do {
-                try await self.send(InsulinStatusRequest())
-                try await self.send(CurrentBatteryV2Request())
-                try await self.send(CurrentBolusStatusRequest())
-                pm.updateState { $0.lastSync = Date() }
+                let insulinData = try await sendAndReceive(InsulinStatusRequest(),
+                                                          responseOpCode: InsulinStatusResponse.opCode)
+                let batteryData = try await sendAndReceive(CurrentBatteryV2Request(),
+                                                          responseOpCode: CurrentBatteryV2Response.opCode)
+                let bolusData   = try await sendAndReceive(CurrentBolusStatusRequest(),
+                                                          responseOpCode: CurrentBolusStatusResponse.opCode)
+                pm.updateState { state in
+                    if let r = InsulinStatusResponse(cargo: insulinData) {
+                        state.reservoirUnits = Double(r.currentUnits)
+                    }
+                    if let r = CurrentBatteryV2Response(cargo: batteryData) {
+                        state.batteryPercent = r.batteryPercent
+                    }
+                    if let r = CurrentBolusStatusResponse(cargo: bolusData) {
+                        if r.hasActiveBolus {
+                            state.bolusState        = .inProgress
+                            state.activeBolusId     = r.bolusId
+                            state.activeBolusUnits  = Double(r.requestedVolumeMU) / 1000.0
+                            state.activeBolusStartDate = r.timestamp
+                        } else {
+                            state.bolusState        = .noBolus
+                            state.activeBolusId     = nil
+                            state.activeBolusUnits  = nil
+                            state.activeBolusStartDate = nil
+                        }
+                    }
+                    state.lastSync = Date()
+                }
                 completion(nil)
             } catch {
                 completion(error)
+            }
+        }
+    }
+
+    // Send a request and await its response cargo. Registers a continuation in
+    // pendingResponses so dispatchResponse can resume it when the pump replies.
+    private func sendAndReceive(_ request: some TandemRequest, responseOpCode: UInt8) async throws -> Data {
+        try await withCheckedThrowingContinuation { cont in
+            pendingResponses.append((opCode: responseOpCode, continuation: cont))
+            Task { [weak self] in
+                guard let self else {
+                    cont.resume(throwing: TandemBLEError.notConnected)
+                    return
+                }
+                do {
+                    try await self.send(request)
+                } catch {
+                    // Remove our continuation only if it hasn't been consumed by a response yet
+                    if let idx = self.pendingResponses.firstIndex(where: { $0.opCode == responseOpCode }) {
+                        self.pendingResponses.remove(at: idx)
+                        cont.resume(throwing: error)
+                    }
+                }
             }
         }
     }

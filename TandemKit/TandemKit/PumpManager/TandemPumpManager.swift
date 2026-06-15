@@ -1,13 +1,9 @@
+import Combine
 import HealthKit
 import LoopKit
 import os.log
 
-// TandemPumpManager conforms to LoopKit's PumpManager protocol.
-// BLE communication and auth are delegated to TandemBLEManager.
-//
-// NOTE: enactBolus, enactTempBasal, suspendDelivery, resumeDelivery are
-// stubbed to .failure until the BLE layer and auth state machine are complete.
-public final class TandemPumpManager: PumpManager {
+public final class TandemPumpManager: PumpManager, ObservableObject {
 
     // MARK: - PumpManager static requirements
 
@@ -204,6 +200,7 @@ public final class TandemPumpManager: PumpManager {
             self.delegateQueue.async {
                 self.pumpManagerDelegate?.pumpManagerDidUpdateState(self)
             }
+            DispatchQueue.main.async { self.objectWillChange.send() }
         }
     }
 }

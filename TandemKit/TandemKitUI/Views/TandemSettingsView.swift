@@ -3,7 +3,7 @@ import SwiftUI
 import TandemKit
 
 struct TandemSettingsView: View {
-    let pumpManager: TandemPumpManager
+    @ObservedObject var pumpManager: TandemPumpManager
     let onRemovePump: () -> Void
 
     @State private var showRemoveConfirm = false
