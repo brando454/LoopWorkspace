@@ -12,11 +12,24 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     private weak var pumpManager: TandemPumpManager?
     private let logger = Logger(subsystem: "com.loopandlearn.TandemKit", category: "TandemPeripheralManager")
 
+    // Serial queue that owns all CoreBluetooth callbacks for this connection.
+    // Every mutation of `characteristics`, `receiveBuffers`, `pending`, and the
+    // init-gate flags happens on this queue. This is what makes the
+    // @unchecked Sendable conformance sound: the state is queue-confined, not
+    // actually concurrent. CoreBluetooth delivers delegate callbacks here, and
+    // we hop our own send/timeout work onto it.
+    private let queue: DispatchQueue
+
     // Discovered characteristics keyed by UUID
     private var characteristics: [CBUUID: CBCharacteristic] = [:]
 
-    // Pending request tracking: (characteristic UUID, transactionId) → continuation
-    private var pendingResponses: [(opCode: UInt8, continuation: CheckedContinuation<Data, Error>)] = []
+    // Pending request tracking, keyed on (responseCharacteristic, opCode) so
+    // opcode collisions across characteristics cannot misroute responses.
+    private let pending = PendingResponseTable()
+
+    // Per-request timeout. If the pump never replies, the continuation would
+    // otherwise leak and the operation would hang forever.
+    private let requestTimeout: TimeInterval = 10
 
     // Receive buffer: accumulate chunks per characteristic
     private var receiveBuffers: [CBUUID: [Data]] = [:]
@@ -29,18 +42,18 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     private var notificationsEnabled = false
     private var notificationsSubscribed = 0
 
-    init(peripheral: CBPeripheral, bleManager: TandemBLEManager, pumpManager: TandemPumpManager) {
+    init(peripheral: CBPeripheral, bleManager: TandemBLEManager, pumpManager: TandemPumpManager, queue: DispatchQueue) {
         self.peripheral = peripheral
         self.bleManager = bleManager
         self.pumpManager = pumpManager
+        self.queue = queue
         super.init()
         peripheral.delegate = self
     }
 
     func cleanup() {
         peripheral.delegate = nil
-        pendingResponses.forEach { $0.continuation.resume(throwing: TandemBLEError.notConnected) }
-        pendingResponses.removeAll()
+        pending.failAll(error: TandemBLEError.notConnected)
     }
 
     // MARK: - CBPeripheralDelegate
@@ -202,11 +215,12 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
             return
         }
 
-        // Route to pending request continuation
-        if let idx = pendingResponses.firstIndex(where: { $0.opCode == opCode }) {
-            let cont = pendingResponses.remove(at: idx).continuation
-            cont.resume(returning: cargo)
-        }
+        // Route to the pending request keyed on BOTH characteristic and opcode.
+        // Matching on the pair is the fix for the opcode collision: e.g. 0xA5 is
+        // SetTempRateResponse on CONTROL but LastBolusStatusV2Response on
+        // CURRENT_STATUS, and only the (characteristic, opCode) pair tells them
+        // apart. Called on `queue` (from `receive`, which runs on the CB queue).
+        pending.resolve(characteristic: uuid, opCode: opCode, cargo: cargo)
     }
 
     // MARK: - High-level operations (called by TandemBLEManager)
@@ -216,11 +230,11 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
             guard let self, let pm = self.pumpManager else { return }
             do {
                 let insulinData = try await sendAndReceive(InsulinStatusRequest(),
-                                                          responseOpCode: InsulinStatusResponse.opCode)
+                                                          responseType: InsulinStatusResponse.self)
                 let batteryData = try await sendAndReceive(CurrentBatteryV2Request(),
-                                                          responseOpCode: CurrentBatteryV2Response.opCode)
+                                                          responseType: CurrentBatteryV2Response.self)
                 let bolusData   = try await sendAndReceive(CurrentBolusStatusRequest(),
-                                                          responseOpCode: CurrentBolusStatusResponse.opCode)
+                                                          responseType: CurrentBolusStatusResponse.self)
                 pm.updateState { state in
                     if let r = InsulinStatusResponse(cargo: insulinData) {
                         state.reservoirUnits = Double(r.currentUnits)
@@ -250,26 +264,70 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         }
     }
 
-    // Send a request and await its response cargo. Registers a continuation in
-    // pendingResponses so dispatchResponse can resume it when the pump replies.
-    private func sendAndReceive(_ request: some TandemRequest, responseOpCode: UInt8) async throws -> Data {
+    // Send a request and await its response cargo.
+    //
+    // The waiter is keyed on the RESPONSE type's characteristic + opCode (via
+    // `Response.self`), so the response can only be matched by a reply arriving
+    // on the correct characteristic. A timeout is armed on `queue`; if the pump
+    // never replies, the waiter is failed with `.timeout` and removed, so the
+    // continuation can never leak.
+    //
+    // All table mutation and the send happen on `queue`, keeping this request's
+    // bookkeeping serialized with CoreBluetooth's callbacks.
+    private func sendAndReceive<Response: TandemResponse>(
+        _ request: some TandemRequest,
+        responseType: Response.Type
+    ) async throws -> Data {
         try await withCheckedThrowingContinuation { cont in
-            pendingResponses.append((opCode: responseOpCode, continuation: cont))
-            Task { [weak self] in
+            queue.async { [weak self] in
                 guard let self else {
                     cont.resume(throwing: TandemBLEError.notConnected)
                     return
                 }
-                do {
-                    try await self.send(request)
-                } catch {
-                    // Remove our continuation only if it hasn't been consumed by a response yet
-                    if let idx = self.pendingResponses.firstIndex(where: { $0.opCode == responseOpCode }) {
-                        self.pendingResponses.remove(at: idx)
-                        cont.resume(throwing: error)
+
+                // resumeOnce guards against double-resume: whichever of
+                // response / timeout / send-error fires first wins; the rest
+                // are no-ops because the table entry is already gone.
+                let resumed = ResumeGuard()
+
+                let token = self.pending.register(
+                    characteristic: Response.characteristic,
+                    opCode: Response.opCode
+                ) { result in
+                    guard resumed.tryConsume() else { return }
+                    cont.resume(with: result)
+                }
+
+                // Arm timeout on the same queue.
+                self.queue.asyncAfter(deadline: .now() + self.requestTimeout) { [weak self] in
+                    guard let self else { return }
+                    // fail() is a no-op if the entry was already resolved.
+                    self.pending.fail(token: token, error: TandemBLEError.timeout)
+                }
+
+                // Send the request. If serialization/write fails, fail this exact
+                // entry by token (not "first matching opcode").
+                Task { [weak self] in
+                    guard let self else { return }
+                    do {
+                        try await self.send(request)
+                    } catch {
+                        self.queue.async {
+                            self.pending.fail(token: token, error: error)
+                        }
                     }
                 }
             }
+        }
+    }
+
+    // Single-shot guard so a continuation is resumed exactly once.
+    private final class ResumeGuard {
+        private var consumed = false
+        func tryConsume() -> Bool {
+            if consumed { return false }
+            consumed = true
+            return true
         }
     }
 
@@ -279,14 +337,14 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
             do {
                 // Step 1: request permission and get bolusId
                 let permData = try await sendAndReceive(BolusPermissionRequest(),
-                                                       responseOpCode: BolusPermissionResponse.opCode)
+                                                       responseType: BolusPermissionResponse.self)
                 guard let perm = BolusPermissionResponse(cargo: permData), perm.permissionGranted else {
                     completion(.communication(nil))
                     return
                 }
                 // Step 2: initiate the bolus using the granted bolusId
                 let initData = try await sendAndReceive(InitiateBolusRequest(units: units, bolusId: perm.bolusId),
-                                                       responseOpCode: InitiateBolusResponse.opCode)
+                                                       responseType: InitiateBolusResponse.self)
                 guard let resp = InitiateBolusResponse(cargo: initData), resp.success else {
                     completion(.communication(nil))
                     return
@@ -306,7 +364,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
             do {
                 let data = try await sendAndReceive(
                     SetTempRateRequest(durationMinutes: 4320, percent: 0),
-                    responseOpCode: SetTempRateResponse.opCode
+                    responseType: SetTempRateResponse.self
                 )
                 guard let resp = SetTempRateResponse(cargo: data), resp.success else {
                     completion(PumpManagerError.communication(nil))
@@ -324,7 +382,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
             guard let self else { return }
             do {
                 let data = try await sendAndReceive(StopTempRateRequest(),
-                                                   responseOpCode: StopTempRateResponse.opCode)
+                                                   responseType: StopTempRateResponse.self)
                 guard let resp = StopTempRateResponse(cargo: data), resp.success else {
                     completion(PumpManagerError.communication(nil))
                     return

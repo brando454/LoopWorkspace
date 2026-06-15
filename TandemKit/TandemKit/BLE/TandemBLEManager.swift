@@ -142,7 +142,8 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
         peripheralManager = TandemPeripheralManager(
             peripheral: peripheral,
             bleManager: self,
-            pumpManager: pumpManager
+            pumpManager: pumpManager,
+            queue: managerQueue
         )
         peripheral.discoverServices([TandemServiceUUID.tip, TandemServiceUUID.deviceInformation])
     }
