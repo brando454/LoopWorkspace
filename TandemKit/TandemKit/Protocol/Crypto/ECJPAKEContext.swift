@@ -44,6 +44,19 @@ final class ECJPAKEContext {
         self.appInstanceIdLE = Data([UInt8(appInstanceId & 0xFF), UInt8((appInstanceId >> 8) & 0xFF)])
     }
 
+    #if DEBUG
+    // Test-only initializer that injects fixed client scalars so a full
+    // handshake can be replayed deterministically against an independent
+    // reference. Compiled out of release builds. Mirrors the production init
+    // exactly except x1/x2 are supplied rather than randomly generated.
+    init(testingPassword password: Data, appInstanceId: UInt16, x1: Fq, x2: Fq) {
+        self.x1 = x1
+        self.x2 = x2
+        self.password = passwordToScalar(password)
+        self.appInstanceIdLE = Data([UInt8(appInstanceId & 0xFF), UInt8((appInstanceId >> 8) & 0xFF)])
+    }
+    #endif
+
     // MARK: - Round 1
 
     // Returns 330 bytes: bytes[0..<165] = part1, bytes[165..<330] = part2
@@ -107,7 +120,16 @@ final class ECJPAKEContext {
         let KPoint = B.adding(X4x2s.negated()).multiplied(by: x2)
 
         guard let (Kx, _) = KPoint.toAffine() else { throw ECJPAKEError.invalidServerPoint }
-        let km = Kx.bytes   // 32-byte shared secret (x-coordinate)
+        // The shared secret is SHA-256 of the X-coordinate of K, NOT the raw
+        // X-coordinate. The reference (pumpX2 EcJpake.deriveSecret) hashes
+        // BigInteger.asUnsignedByteArray(K.x), i.e. the MINIMAL big-endian
+        // encoding with any leading zero bytes stripped, so we strip leading
+        // zeros from the fixed 32-byte encoding before hashing to stay
+        // byte-identical to the pump. Verified against the jwoglom deterministic
+        // vector (derivedSecret 45d66d65…0c78d4).
+        var xMinimal = Kx.bytes
+        while xMinimal.first == 0 { xMinimal.removeFirst() }
+        let km = sha256(xMinimal)   // 32-byte session secret
         derivedKeyMaterial = km
         return km
     }
