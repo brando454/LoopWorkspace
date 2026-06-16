@@ -27,6 +27,7 @@
 		50F2EA2DAF9A06A834F78096 /* LoopKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1876680BCF0BBB17E208152E /* LoopKit.framework */; };
 		542CC1CF0327CFA09112204C /* PendingResponseTableTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9F15CAA9EF8E5F289E45586 /* PendingResponseTableTests.swift */; };
 		58FE5537D6E6A4790939D567 /* StatusMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD3003CFEB8118A810634AA5 /* StatusMessages.swift */; };
+		5ED1C754407408BAD2BB7CE0 /* ECJPAKEZKPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3B1B5602EC706CC28E6EBAA /* ECJPAKEZKPTests.swift */; };
 		6DDA48EE66A1CC10D5A0621B /* TransactionID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2809D5F80CA0BC1CB2935A83 /* TransactionID.swift */; };
 		73C84B897842369F89F8E4B2 /* P256Arithmetic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98B17486A139FF260AE96644 /* P256Arithmetic.swift */; };
 		73F8F941117F8120893BB057 /* AuthMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = B64545F8C6FF45AB42F9031A /* AuthMessages.swift */; };
@@ -179,6 +180,7 @@
 		B740882F65C069639AFBEA3B /* TempRateMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempRateMessages.swift; sourceTree = "<group>"; };
 		BC0A02448C590E596C1B56DD /* LoopKit */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = LoopKit; path = ../LoopKit/LoopKit.xcodeproj; sourceTree = "<group>"; };
 		C240D0E5F6E5D9BC3A3DD9AB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		C3B1B5602EC706CC28E6EBAA /* ECJPAKEZKPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ECJPAKEZKPTests.swift; sourceTree = "<group>"; };
 		CDB32DFE119408889BAB63DC /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
 		D7947F86E48A076358AC55AB /* PendingResponseTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingResponseTable.swift; sourceTree = "<group>"; };
 		DE3128613CD96F34670A8484 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
@@ -329,6 +331,7 @@
 			isa = PBXGroup;
 			children = (
 				19DB2695FF11872F61F459D3 /* CRC16Tests.swift */,
+				C3B1B5602EC706CC28E6EBAA /* ECJPAKEZKPTests.swift */,
 				A9F15CAA9EF8E5F289E45586 /* PendingResponseTableTests.swift */,
 				DE3128613CD96F34670A8484 /* README.md */,
 				9705132EC8A390B413F14096 /* TandemDoseReporterTests.swift */,
@@ -611,6 +614,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				021094432644857AEB626377 /* CRC16Tests.swift in Sources */,
+				5ED1C754407408BAD2BB7CE0 /* ECJPAKEZKPTests.swift in Sources */,
 				542CC1CF0327CFA09112204C /* PendingResponseTableTests.swift in Sources */,
 				7739B6697215074F6836084D /* TandemDoseReporterTests.swift in Sources */,
 				77B04A81275D919BE3979B22 /* TandemMessageVectorTests.swift in Sources */,

@@ -2,10 +2,15 @@ import Foundation
 
 // EC-JPAKE (RFC 8236) over P-256 for Tandem Mobi initial pairing.
 //
-// Wire format per round: point_x963(65) || zkp_V(65) || zkp_b(32) || signerID_len(1) || signerID(n)
-// Each 165-byte chunk = one point + one ZKP with 2-byte appInstanceId as signerID.
+// Wire format per round (matches pumpX2 writePoint/writeZkp, confirmed against
+// captured pump bytes): each 165-byte chunk is
+//   U8(65) || point_x963(65) || U8(65) || zkp_V(65) || U8(32) || zkp_b(32)
+// There is NO signerID on the wire. The Fiat-Shamir challenge hashes a fixed
+// role identity ("client"/"server") that is never transmitted.
 // Round 1 has two such chunks (1a = X1+ZKP1, 1b = X2+ZKP2).
 // Round 2 has one chunk (A + ZKP_A) with generator G' = X1+X3+X4.
+// The 2-byte little-endian appInstanceId is a SEPARATE field that prefixes the
+// 165-byte challenge to form the request cargo; it is not part of JPAKE.
 
 enum ECJPAKEError: Error {
     case invalidServerPoint
@@ -28,13 +33,15 @@ final class ECJPAKEContext {
     // Stored for fast-reconnect derivation
     private(set) var derivedKeyMaterial: Data?
 
-    private let signerID: Data   // 2-byte LE appInstanceId
+    // The 2-byte LE appInstanceId that prefixes the request cargo. Stored for
+    // the message layer; it is NOT used inside the JPAKE proofs.
+    let appInstanceIdLE: Data
 
     init(password: Data, appInstanceId: UInt16) {
         self.x1 = Fq.random()
         self.x2 = Fq.random()
         self.password = passwordToScalar(password)
-        self.signerID = Data([UInt8(appInstanceId & 0xFF), UInt8((appInstanceId >> 8) & 0xFF)])
+        self.appInstanceIdLE = Data([UInt8(appInstanceId & 0xFF), UInt8((appInstanceId >> 8) & 0xFF)])
     }
 
     // MARK: - Round 1
@@ -43,8 +50,8 @@ final class ECJPAKEContext {
     func clientRound1() throws -> Data {
         let X1 = TandemP256Point.generator.multiplied(by: x1)
         let X2 = TandemP256Point.generator.multiplied(by: x2)
-        let zkp1 = makeZKP(x: x1, X: X1, generator: .generator)
-        let zkp2 = makeZKP(x: x2, X: X2, generator: .generator)
+        let zkp1 = makeZKP(x: x1, X: X1, generator: .generator, id: Self.clientID)
+        let zkp2 = makeZKP(x: x2, X: X2, generator: .generator, id: Self.clientID)
         var out = Data()
         out.append(encodeChunk(point: X1, zkp: zkp1))   // 165 bytes
         out.append(encodeChunk(point: X2, zkp: zkp2))   // 165 bytes
@@ -61,8 +68,8 @@ final class ECJPAKEContext {
     // Process server's combined round 1 (part1 + part2 concatenated = 330 bytes)
     func readRound1(_ data: Data) throws {
         guard data.count == 330 else { throw ECJPAKEError.invalidServerPoint }
-        let (X3p, _) = try decodeAndVerifyChunk(data[0..<165], generator: .generator, peerID: nil)
-        let (X4p, _) = try decodeAndVerifyChunk(data[165..<330], generator: .generator, peerID: nil)
+        let (X3p, _) = try decodeAndVerifyChunk(data[0..<165], generator: .generator, peerID: Self.serverID)
+        let (X4p, _) = try decodeAndVerifyChunk(data[165..<330], generator: .generator, peerID: Self.serverID)
         X3 = X3p
         X4 = X4p
     }
@@ -78,7 +85,7 @@ final class ECJPAKEContext {
         // Client key share: A = G' * (x2 * password)
         let x2s = Fq(w: modQ(mul256(x2.w, password.w)))
         let A = Gprime.multiplied(by: x2s)
-        let zkp = makeZKP(x: x2s, X: A, generator: Gprime)
+        let zkp = makeZKP(x: x2s, X: A, generator: Gprime, id: Self.clientID)
         return encodeChunk(point: A, zkp: zkp)
     }
 
@@ -92,7 +99,7 @@ final class ECJPAKEContext {
         let Gprime2 = X1.adding(X2).adding(X3)
 
         // Decode B (server's key share). Server may use different signerID length → just grab point+zkp
-        let (B, _) = try decodeAndVerifyChunk(data, generator: Gprime2, peerID: nil)
+        let (B, _) = try decodeAndVerifyChunk(data, generator: Gprime2, peerID: Self.serverID)
 
         // K = (B - X4 * x2 * password) * x2
         let x2s  = Fq(w: modQ(mul256(x2.w, password.w)))
@@ -112,21 +119,29 @@ final class ECJPAKEContext {
         let b: Fq        // response scalar
     }
 
-    // Prove knowledge of x such that X = x * G
-    private func makeZKP(x: Fq, X: TandemP256Point, generator: TandemP256Point) -> ZKP {
+    // Prove knowledge of x such that X = x * G. `id` is the prover role string
+    // ("client" for our proofs); it is hashed into the challenge, never sent.
+    private func makeZKP(x: Fq, X: TandemP256Point, generator: TandemP256Point, id: Data) -> ZKP {
         let v = Fq.random()
         let V = generator.multiplied(by: v)
-        let h = zkpChallenge(generator: generator, V: V, X: X, signerID: signerID)
+        let h = zkpChallenge(generator: generator, V: V, X: X, signerID: id)
         // b = v - x*h mod q
         let xh = Fq(w: modQ(mul256(x.w, h.w)))
         let b  = Fq.sub(v, xh)
         return ZKP(V: V, b: b)
     }
 
+    // Internal hook so tests can verify proofs against captured pump bytes
+    // without exposing the private implementation surface.
+    #if DEBUG
+    static func verifyZKPForTesting(_ zkp: ZKP, X: TandemP256Point, generator: TandemP256Point, signerID: Data) -> Bool {
+        verifyZKP(zkp, X: X, generator: generator, signerID: signerID)
+    }
+    #endif
+
     // Verify ZKP: check V == b*G + h*X
-    private static func verifyZKP(_ zkp: ZKP, X: TandemP256Point, generator: TandemP256Point, signerID: Data?) -> Bool {
-        let sid = signerID ?? Data()
-        let h = zkpChallenge(generator: generator, V: zkp.V, X: X, signerID: sid)
+    private static func verifyZKP(_ zkp: ZKP, X: TandemP256Point, generator: TandemP256Point, signerID: Data) -> Bool {
+        let h = zkpChallenge(generator: generator, V: zkp.V, X: X, signerID: signerID)
         // Expected: V == b*G + h*X
         let bG  = generator.multiplied(by: zkp.b)
         let hX  = X.multiplied(by: h)
@@ -137,16 +152,45 @@ final class ECJPAKEContext {
         return ex == vx && ey == vy
     }
 
-    // Fiat-Shamir: h = hash(G || V || X || signerID)
+    // Fiat-Shamir challenge, byte-for-byte compatible with the Tandem pump
+    // (mbedTLS-style EC-JPAKE, per jwoglom/pumpX2 io.particle.crypto.EcJpake).
+    //
+    //   h = SHA256( F(G) || F(V) || F(X) || U32BE(len(id)) || id ) mod n
+    //   F(P) = U32BE(len(P_enc)) || P_enc,  P_enc = uncompressed 65-byte point.
+    //
+    // `id` is the PROVER role string: "client" for our own proofs, "server"
+    // when verifying the pump. It is NOT transmitted on the wire; it exists
+    // only inside this hash. The earlier implementation omitted every length
+    // prefix and hashed the 2-byte appInstanceId here, so neither our proofs
+    // nor our verification matched what the pump computes.
     private static func zkpChallenge(generator: TandemP256Point, V: TandemP256Point, X: TandemP256Point, signerID: Data) -> Fq {
         var data = Data()
-        data.append(generator.x963Bytes() ?? Data([0]))
-        data.append(V.x963Bytes() ?? Data([0]))
-        data.append(X.x963Bytes() ?? Data([0]))
+        appendHashPoint(&data, generator)
+        appendHashPoint(&data, V)
+        appendHashPoint(&data, X)
+        data.append(u32be(UInt32(signerID.count)))
         data.append(signerID)
         let digest = sha256(data)
+        // Reduce the 256-bit digest mod the curve order n.
         return Fq(bytes: digest) ?? .zero
     }
+
+    // F(P) = U32BE(len) || uncompressed-point-bytes, matching writeZkpHashPoint.
+    private static func appendHashPoint(_ out: inout Data, _ p: TandemP256Point) {
+        let enc = p.x963Bytes() ?? Data([0x00])
+        out.append(u32be(UInt32(enc.count)))
+        out.append(enc)
+    }
+
+    // 4-byte big-endian length, matching Streams.writeUint32Be.
+    private static func u32be(_ v: UInt32) -> Data {
+        Data([UInt8((v >> 24) & 0xFF), UInt8((v >> 16) & 0xFF),
+              UInt8((v >> 8) & 0xFF), UInt8(v & 0xFF)])
+    }
+
+    // Fixed JPAKE role identities (hashed into the ZKP challenge only).
+    private static let clientID = Data("client".utf8)
+    private static let serverID = Data("server".utf8)
 
     // Non-static version forwarding to static (for makeZKP)
     private func zkpChallenge(generator: TandemP256Point, V: TandemP256Point, X: TandemP256Point, signerID: Data) -> Fq {
@@ -155,34 +199,53 @@ final class ECJPAKEContext {
 
     // MARK: - Wire encoding/decoding
 
-    // Encode: point(65) || V(65) || b(32) || signerID_len(1) || signerID(n)
+    // Encode one chunk exactly as the pump expects (per pumpX2 writePoint/writeZkp):
+    //   U8(len=65) || point(65) || U8(len=65) || V(65) || U8(len=32) || b(32)  = 165 bytes
+    // There is NO signerID field on the wire; the role id is hashed into the
+    // challenge only. The earlier encoder omitted the length prefixes and
+    // appended the appInstanceId, producing chunks the pump would reject.
     private func encodeChunk(point: TandemP256Point, zkp: ZKP) -> Data {
         var d = Data()
-        d.append(point.x963Bytes()!)
-        d.append(zkp.V.x963Bytes()!)
-        d.append(zkp.b.bytes)
-        d.append(UInt8(signerID.count))
-        d.append(signerID)
+        let p = point.x963Bytes()!
+        let v = zkp.V.x963Bytes()!
+        let b = zkp.b.bytes
+        d.append(UInt8(p.count)); d.append(p)
+        d.append(UInt8(v.count)); d.append(v)
+        d.append(UInt8(b.count)); d.append(b)
         return d
     }
 
-    // Decode and verify a chunk. peerID: nil means skip ZKP verification (store for later).
-    private func decodeAndVerifyChunk(_ data: Data, generator: TandemP256Point, peerID: Data?) throws -> (TandemP256Point, ZKP) {
-        guard data.count >= 163 else { throw ECJPAKEError.invalidServerPoint }
-        let pointBytes = data[data.startIndex..<data.index(data.startIndex, offsetBy: 65)]
-        let vBytes     = data[data.index(data.startIndex, offsetBy: 65)..<data.index(data.startIndex, offsetBy: 130)]
-        let bBytes     = data[data.index(data.startIndex, offsetBy: 130)..<data.index(data.startIndex, offsetBy: 162)]
+    // Decode and verify one length-prefixed chunk. `peerID` is the prover role
+    // id to verify against ("server" for the pump). It is REQUIRED: there is no
+    // longer a path that skips verification. Points are validated on-curve and
+    // rejected if at infinity before any proof check.
+    private func decodeAndVerifyChunk(_ data: Data, generator: TandemP256Point, peerID: Data) throws -> (TandemP256Point, ZKP) {
+        var cursor = data.startIndex
 
-        guard let X = TandemP256Point(x963: Data(pointBytes)),
-              let V = TandemP256Point(x963: Data(vBytes)),
-              let b = Fq(bytes: Data(bBytes)) else { throw ECJPAKEError.invalidServerPoint }
+        func readLenPrefixed() throws -> Data {
+            guard cursor < data.endIndex else { throw ECJPAKEError.invalidServerPoint }
+            let len = Int(data[cursor])
+            cursor = data.index(after: cursor)
+            guard len > 0, data.distance(from: cursor, to: data.endIndex) >= len else {
+                throw ECJPAKEError.invalidServerPoint
+            }
+            let end = data.index(cursor, offsetBy: len)
+            let slice = Data(data[cursor..<end])
+            cursor = end
+            return slice
+        }
+
+        let pointBytes = try readLenPrefixed()
+        let vBytes     = try readLenPrefixed()
+        let bBytes     = try readLenPrefixed()
+
+        guard let X = TandemP256Point(validatedX963: pointBytes),
+              let V = TandemP256Point(validatedX963: vBytes),
+              let b = Fq(bytes: bBytes) else { throw ECJPAKEError.invalidServerPoint }
 
         let zkp = ZKP(V: V, b: b)
-        // Verify ZKP (skip verification if peerID is nil — for flexibility in testing)
-        if let pid = peerID {
-            guard ECJPAKEContext.verifyZKP(zkp, X: X, generator: generator, signerID: pid) else {
-                throw ECJPAKEError.zkpVerificationFailed
-            }
+        guard ECJPAKEContext.verifyZKP(zkp, X: X, generator: generator, signerID: peerID) else {
+            throw ECJPAKEError.zkpVerificationFailed
         }
         return (X, zkp)
     }

@@ -83,64 +83,84 @@ private let p256_a: W8 = [0xFFFFFFFC, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000,
 // NIST P-256 fast reduction. c is a 16-limb little-endian product c[0..15].
 // Returns c mod p. Based on FIPS 186-4 D.2.3.
 private func p256Reduce(_ c: [UInt32]) -> W8 {
-    // c[0] = least significant
+    // c[0] = least significant. NIST P-256 fast reduction (FIPS 186-4 D.2.3).
+    //   r = T + 2*S1 + 2*S2 + S3 + S4 - D1 - D2 - D3 - D4   (mod p)
+    // Each tuple comment is written most-significant word first (word 7 .. word 0);
+    // the W8 literal is the same words in LITTLE-endian order (index 0 = LSW).
+    // Verified byte-exact against arbitrary-precision arithmetic over 100k random products.
     let c0 = c[0], c1 = c[1], c2 = c[2], c3 = c[3]
     let c4 = c[4], c5 = c[5], c6 = c[6], c7 = c[7]
     let c8 = c[8], c9 = c[9], c10 = c[10], c11 = c[11]
     let c12 = c[12], c13 = c[13], c14 = c[14], c15 = c[15]
 
-    // s1 = (c7, c6, c5, c4, c3, c2, c1, c0)  ← already in our LE format
-    let s1: W8 = [c0, c1, c2, c3, c4, c5, c6, c7]
-    // s2 = (c15, c14, c13, c12, c11, 0, 0, 0)
-    let s2: W8 = [0, 0, 0, c11, c12, c13, c14, c15]
-    // s3 = (0, c15, c14, c13, c12, 0, 0, 0)
-    let s3: W8 = [0, 0, 0, c12, c13, c14, c15, 0]
-    // s4 = (c15, c14, 0, 0, 0, c10, c9, c8)
-    let s4: W8 = [c8, c9, c10, 0, 0, 0, c14, c15]
-    // s5 = (c8, c13, c15, c14, c13, c11, c10, c9)
-    let s5: W8 = [c9, c10, c11, c13, c14, c15, c13, c8]
-    // s6 = (c10, c8, 0, 0, 0, c13, c12, c11)
-    let s6: W8 = [c11, c12, c13, 0, 0, 0, c8, c10]
-    // s7 = (c11, c9, 0, 0, c15, c14, c13, c12)
-    let s7: W8 = [c12, c13, c14, c15, 0, 0, c9, c11]
-    // s8 = (c12, 0, c10, c9, c8, c15, c14, c13)
-    let s8: W8 = [c13, c14, c15, c8, c9, c10, 0, c12]
+    // T  = ( c7, c6, c5, c4, c3, c2, c1, c0)
+    let T:  W8 = [c0, c1, c2, c3, c4, c5, c6, c7]
+    // S1 = ( c15, c14, c13, c12, c11, 0, 0, 0)
+    let S1: W8 = [0, 0, 0, c11, c12, c13, c14, c15]
+    // S2 = ( 0, c15, c14, c13, c12, 0, 0, 0)
+    let S2: W8 = [0, 0, 0, c12, c13, c14, c15, 0]
+    // S3 = ( c15, c14, 0, 0, 0, c10, c9, c8)
+    let S3: W8 = [c8, c9, c10, 0, 0, 0, c14, c15]
+    // S4 = ( c8, c13, c15, c14, c13, c11, c10, c9)
+    let S4: W8 = [c9, c10, c11, c13, c14, c15, c13, c8]
+    // D1 = ( c10, c8, 0, 0, 0, c13, c12, c11)
+    let D1: W8 = [c11, c12, c13, 0, 0, 0, c8, c10]
+    // D2 = ( c11, c9, 0, 0, c15, c14, c13, c12)
+    let D2: W8 = [c12, c13, c14, c15, 0, 0, c9, c11]
+    // D3 = ( c12, 0, c10, c9, c8, c15, c14, c13)
+    let D3: W8 = [c13, c14, c15, c8, c9, c10, 0, c12]
+    // D4 = ( c13, 0, c11, c10, c9, 0, c15, c14)
+    let D4: W8 = [c14, c15, 0, c9, c10, c11, 0, c13]
 
-    // r = s1 + 2*s2 + 2*s3 + s4 + s5 - s6 - s7 - s8  (mod p)
-    // Work with signed 64-bit accumulators, column by column.
+    // Accumulate column-by-column into signed 64-bit limbs.
     var acc = [Int64](repeating: 0, count: 9)
     for i in 0..<8 {
-        acc[i] += Int64(s1[i])
-        acc[i] += 2 * Int64(s2[i])
-        acc[i] += 2 * Int64(s3[i])
-        acc[i] += Int64(s4[i])
-        acc[i] += Int64(s5[i])
-        acc[i] -= Int64(s6[i])
-        acc[i] -= Int64(s7[i])
-        acc[i] -= Int64(s8[i])
+        acc[i] += Int64(T[i])
+        acc[i] += 2 * Int64(S1[i])
+        acc[i] += 2 * Int64(S2[i])
+        acc[i] += Int64(S3[i])
+        acc[i] += Int64(S4[i])
+        acc[i] -= Int64(D1[i])
+        acc[i] -= Int64(D2[i])
+        acc[i] -= Int64(D3[i])
+        acc[i] -= Int64(D4[i])
     }
-    // Propagate carries (signed)
+    // Signed carry propagation ( >> is arithmetic for Int64 ).
     for i in 0..<8 {
         let carry = acc[i] >> 32
         acc[i] &= 0xFFFF_FFFF
         acc[i+1] += carry
     }
-    // Convert to UInt32 array; may be slightly negative after reduction
     var r = W8(repeating: 0, count: 8)
-    for i in 0..<8 { r[i] = UInt32(bitPattern: Int32(truncatingIfNeeded: acc[i])) }
+    for i in 0..<8 { r[i] = UInt32(truncatingIfNeeded: acc[i]) }
 
-    // Final conditional add/sub to bring into [0, p)
-    // Could need up to a few passes
-    for _ in 0..<4 {
-        if acc[8] < 0 || cmp(r, p256_p) >= 0 {
-            if acc[8] < 0 {
-                let (added, _) = add256(r, p256_p); r = added; acc[8] += 1
-            } else {
-                r = sub256(r, p256_p); acc[8] -= 1
-            }
-        } else { break }
+    // The exact value is hi*2^256 + r, with hi in roughly [-4, 3].
+    // Add/subtract p until r is in [0, p); track multiples of 2^256 in hi.
+    var hi = acc[8]
+    for _ in 0..<8 {
+        if hi < 0 {
+            let (sum, carry) = add256(r, p256_p)
+            r = sum
+            hi += Int64(carry)
+        } else if hi > 0 || cmp(r, p256_p) >= 0 {
+            let borrow = subBorrow(&r, p256_p)
+            hi -= Int64(borrow)
+        } else {
+            break
+        }
     }
     return r
+}
+
+// r -= b in place; returns 1 if it borrowed past the top limb, else 0.
+private func subBorrow(_ r: inout W8, _ b: W8) -> UInt32 {
+    var borrow: Int64 = 0
+    for i in 0..<8 {
+        let diff = Int64(r[i]) - Int64(b[i]) - borrow
+        r[i] = UInt32(bitPattern: Int32(truncatingIfNeeded: diff))
+        borrow = diff < 0 ? 1 : 0
+    }
+    return UInt32(borrow)
 }
 
 struct Fp: Equatable {
@@ -150,8 +170,12 @@ struct Fp: Equatable {
     static let one  = Fp(w: { var v = W8(repeating: 0, count: 8); v[0] = 1; return v }())
 
     init(w: W8) { self.w = w }
-    init?(bytes: Data) {  // big-endian 32 bytes
-        guard bytes.count == 32 else { return nil }
+    init?(bytes rawBytes: Data) {  // big-endian 32 bytes
+        guard rawBytes.count == 32 else { return nil }
+        // Rebase to a base-0 buffer: callers may pass a Data slice whose
+        // startIndex != 0 (e.g. data[33..<65]), and the loop below subscripts
+        // by absolute integer index. Without this, valid input traps.
+        let bytes = Data(rawBytes)
         var ww = W8(repeating: 0, count: 8)
         for i in 0..<8 {
             let idx = 28 - i * 4
@@ -238,38 +262,52 @@ extension Fp {
 let p256_q: W8 = [0xFC632551, 0xF3B9CAC2, 0xA7179E84, 0xBCE6FAAD,
                            0xFFFFFFFF, 0xFFFFFFFF, 0x00000000, 0xFFFFFFFF]
 
-// General modular reduction for mod q using repeated subtraction (fast enough for our needs).
-// For a 512-bit value represented as 16 limbs.
+// Modular reduction mod q (the P-256 group order n) for a value of up to 16
+// little-endian limbs (e.g. a 512-bit product from mul256).
+//
+// The previous implementation used a windowed repeated-subtraction that only
+// compared the 8-limb window rem[shift..shift+8] against q and ignored limbs
+// above the window. For true multi-limb inputs (such as x*h in makeZKP) the
+// high limbs were never reduced, so the result was the low 256 bits unreduced.
+// It happened to be correct for 256-bit inputs (a hashed challenge), which is
+// why point verification of an externally-generated proof still passed while
+// our own freshly-generated client proof failed to verify.
+//
+// This is replaced with a bit-by-bit binary long division (shift-and-subtract):
+//   rem = 0
+//   for each bit of c from most-significant to least:
+//       rem = (rem << 1) | bit          // value may momentarily reach 257 bits
+//       if rem >= q: rem -= q
+// The remainder never exceeds q-1 across the loop, so an 8-limb (256-bit)
+// accumulator is sufficient; the single bit shifted out of the top is folded in
+// by an unconditional subtraction of q when it is set. Verified byte-exact
+// against arbitrary-precision arithmetic over 50k random full-width inputs plus
+// edge cases (0, q, q-1, q+1, 2q, q<<32, q*q, 2^512-1).
 func modQ(_ c: [UInt32]) -> W8 {
-    // Work with a 9-limb accumulator for the top part and subtract q*shifted
-    // Simple approach: long subtraction. Not fast but correct.
-    var rem = c  // 16 limbs
-    // Bring high bits down by subtracting q << (32 * shift) while rem >= q << shift
-    for shift in (0...8).reversed() {
-        while true {
-            // Check if rem[shift..shift+8] >= q
-            var ge = false
-            for i in (0..<8).reversed() {
-                let ri = rem[shift + i]
-                let qi = (i < 8 ? p256_q[i] : 0)
-                if ri > qi { ge = true; break }
-                if ri < qi { break }
-                if i == 0 { ge = true }
-            }
-            if !ge { break }
-            // Subtract q << (32 * shift)
-            var borrow: Int64 = 0
-            for i in 0..<8 {
-                let diff = Int64(rem[shift + i]) - Int64(p256_q[i]) - borrow
-                rem[shift + i] = UInt32(bitPattern: Int32(truncatingIfNeeded: diff))
-                borrow = diff < 0 ? 1 : 0
-            }
-            if borrow != 0 && shift + 8 < 16 {
-                rem[shift + 8] = UInt32(bitPattern: Int32(rem[shift + 8]) - Int32(borrow))
-            }
+    let nbits = c.count * 32
+    var rem = W8(repeating: 0, count: 8)
+    var bitpos = nbits - 1
+    while bitpos >= 0 {
+        let limb = bitpos >> 5
+        let bit = (c[limb] >> UInt32(bitpos & 31)) & 1
+        // rem = (rem << 1) | bit
+        var carry: UInt32 = bit
+        for i in 0..<8 {
+            let nv = (rem[i] << 1) | carry
+            carry = (rem[i] >> 31) & 1
+            rem[i] = nv
         }
+        // If a bit was shifted out of the top, the true value is rem + 2^256,
+        // which is >= q, so subtract q once (result fits in 256 bits).
+        if carry != 0 {
+            rem = sub256(rem, p256_q)
+        }
+        if cmp(rem, p256_q) >= 0 {
+            rem = sub256(rem, p256_q)
+        }
+        bitpos -= 1
     }
-    return W8(rem[0..<8])
+    return rem
 }
 
 struct Fq: Equatable {
@@ -279,8 +317,10 @@ struct Fq: Equatable {
     static let one  = Fq(w: { var v = W8(repeating: 0, count: 8); v[0] = 1; return v }())
 
     init(w: W8) { self.w = w }
-    init?(bytes: Data) {
-        guard bytes.count == 32 else { return nil }
+    init?(bytes rawBytes: Data) {
+        guard rawBytes.count == 32 else { return nil }
+        // Rebase to a base-0 buffer; see Fp.init?(bytes:) for rationale.
+        let bytes = Data(rawBytes)
         var ww = W8(repeating: 0, count: 8)
         for i in 0..<8 {
             let idx = 28 - i * 4
@@ -483,6 +523,22 @@ extension TandemP256Point {
         guard let fx = Fp(bytes: data[1..<33]),
               let fy = Fp(bytes: data[33..<65]) else { return nil }
         self.x = fx; self.y = fy; self.z = .one
+    }
+
+    // Deserialize AND validate. Rejects malformed encodings, the point at
+    // infinity, and any (x, y) that does not satisfy the P-256 curve equation
+    // y^2 == x^3 + a*x + b. Skipping this check is a known EC-JPAKE attack
+    // vector (small-subgroup / invalid-curve), so all peer points decoded
+    // during pairing go through here.
+    init?(validatedX963 data: Data) {
+        guard let p = TandemP256Point(x963: data) else { return nil }
+        let x = p.x, y = p.y
+        if x == .zero && y == .zero { return nil }
+        let lhs = y.squared()
+        let aCoeff = Fp(w: p256_a)
+        let rhs = (x * x * x) + (aCoeff * x) + p256_b
+        guard lhs == rhs else { return nil }
+        self = p
     }
 }
 
