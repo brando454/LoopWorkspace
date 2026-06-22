@@ -52,6 +52,11 @@ final class TandemAuthState {
         self.appInstanceId = UInt16.random(in: 1...UInt16.max)
         self.derivedSecretHex = derivedSecretHex
         self.serverNonce3Hex = serverNonce3Hex
+
+        if let secretHex = derivedSecretHex, let nonceHex = serverNonce3Hex,
+           let secret = Data(hexString: secretHex), let nonce = Data(hexString: nonceHex) {
+            authKey = TandemHKDF.build(nonce: nonce, keyMaterial: secret)
+        }
     }
 
     // Start or restart the handshake.
@@ -59,7 +64,9 @@ final class TandemAuthState {
     func begin() throws -> any TandemRequest {
         if let secretHex = derivedSecretHex, let nonceHex = serverNonce3Hex,
            let secret = Data(hexString: secretHex), let nonce = Data(hexString: nonceHex) {
-            authKey = TandemHKDF.build(nonce: nonce, keyMaterial: secret)
+            if authKey == nil {
+                authKey = TandemHKDF.build(nonce: nonce, keyMaterial: secret)
+            }
             state = .sessionKeyPending
             return Jpake3SessionKeyRequest()
         }
