@@ -48,6 +48,11 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
     public var activeBolusUnits: Double?
     public var activeBolusStartDate: Date?
 
+    // Highest bolusId already reported to Loop; persisted so dose-event dedupe
+    // survives app restarts (WP1 / TK-H6). Without persistence the reporter
+    // would re-emit completed boluses after relaunch, inflating IOB.
+    public var lastReportedBolusId: UInt16
+
     // Delivery limits
     public var maximumBasalRateUnitsPerHour: Double
     public var maximumBolusUnits: Double
@@ -81,6 +86,7 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
         activeBolusId = nil
         activeBolusUnits = nil
         activeBolusStartDate = nil
+        lastReportedBolusId = 0
         maximumBasalRateUnitsPerHour = 15
         maximumBolusUnits = 25
         self.basalRateSchedule = basalRateSchedule
@@ -106,6 +112,7 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
         activeBolusId            = rawValue["activeBolusId"] as? UInt16
         activeBolusUnits         = rawValue["activeBolusUnits"] as? Double
         activeBolusStartDate     = rawValue["activeBolusStartDate"] as? Date
+        lastReportedBolusId      = rawValue["lastReportedBolusId"] as? UInt16 ?? 0
         maximumBasalRateUnitsPerHour = rawValue["maximumBasalRateUnitsPerHour"] as? Double ?? 15
         maximumBolusUnits        = rawValue["maximumBolusUnits"] as? Double ?? 25
 
@@ -133,6 +140,7 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
         v["activeBolusId"]        = activeBolusId
         v["activeBolusUnits"]     = activeBolusUnits
         v["activeBolusStartDate"] = activeBolusStartDate
+        v["lastReportedBolusId"]  = lastReportedBolusId
         v["maximumBasalRateUnitsPerHour"] = maximumBasalRateUnitsPerHour
         v["maximumBolusUnits"]    = maximumBolusUnits
         v["basalRateSchedule"]    = basalRateSchedule?.rawValue
