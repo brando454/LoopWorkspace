@@ -233,6 +233,74 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
         }
     }
 
+    // MARK: - Dose reporting (temp basal)
+
+    // Emit the pump currently-running temp basal to Loop as a mutable DoseEntry.
+    // Called best-effort from the status poll once per cycle while a temp rate is
+    // active. Intentionally SEPARATE from bolus reconciliation (which owns a
+    // monotonic bolusId watermark): a temp basal is mutable while running and is
+    // re-emitted each cycle with replacePendingEvents so LoopKit replaces the
+    // prior pending copy rather than appending duplicates.
+    func reportActiveTempBasal(from response: TempRateStatusResponse) {
+        guard response.isActive else { return }
+        guard let schedule = state.basalRateSchedule else { return }
+
+        // The pump expresses a temp rate as a PERCENTAGE of scheduled basal, so
+        // reconstruct the absolute U/hr Loop needs from the scheduled rate at the
+        // pump-confirmed start. This emitted rate is only as accurate as the basal
+        // schedule Loop has stored; if the on-pump schedule diverges, so will this.
+        let scheduledRate = schedule.value(at: response.startDate)
+        let unitsPerHour = Double(response.percentage) / 100.0 * scheduledRate
+        let endDate = response.startDate.addingTimeInterval(TimeInterval(response.durationSeconds))
+
+        let dose = DoseEntry(
+            type: .tempBasal,
+            startDate: response.startDate,
+            endDate: endDate,
+            value: unitsPerHour,
+            unit: .unitsPerHour,
+            insulinType: state.insulinType,
+            isMutable: true
+        )
+
+        // Stable identity from tempRateId + pump-confirmed start so re-emits of the
+        // same temp basal map to one event in Loop store.
+        let raw = "tandem-temp-\(response.tempRateId)-\(Int(response.startDate.timeIntervalSince1970))"
+            .data(using: .utf8)!
+        let event = NewPumpEvent(
+            date: response.startDate,
+            dose: dose,
+            raw: raw,
+            title: "Temp basal \(String(format: "%.2f", unitsPerHour))U/hr",
+            type: .tempBasal
+        )
+
+        delegateQueue.async {
+            self.pumpManagerDelegate?.pumpManager(
+                self,
+                hasNewPumpEvents: [event],
+                lastReconciliation: response.startDate,
+                replacePendingEvents: true,
+                completion: { _ in }
+            )
+        }
+    }
+
+    // TODO(WP2-followup): wire suspend/resume boundary markers off the pump
+    // QualifyingEventMask (pumpSuspend bit 6 / pumpResume bit 7, defined in
+    // StatusMessages.swift). As of WP2 that mask is ONLY a type definition with no
+    // runtime consumer: nothing in the connection or notification flow decodes live
+    // pump event bits, so there is no signal to drive suspend/resume from. Wiring
+    // this up requires (1) a message or BLE notification that delivers the
+    // qualifying-event bitmask at runtime, and (2) a subscriber that decodes
+    // pumpSuspend/pumpResume and calls this with the pump-confirmed boundary time.
+    // Note: suspendDelivery is implemented as a 72h 0% temp rate, so a genuine
+    // suspend and a real 0% temp basal are indistinguishable to the reporter
+    // without these event bits \u2014 which is why this is stubbed, not approximated.
+    func reportSuspendResume(suspended: Bool, at date: Date) {
+        // Intentionally unimplemented \u2014 see TODO(WP2-followup) above.
+    }
+
     // MARK: - Helpers
 
     private var device: HKDevice {

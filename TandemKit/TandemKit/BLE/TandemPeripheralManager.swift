@@ -270,6 +270,18 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                    let last = LastBolusStatusV2Response(cargo: lastBolusData) {
                     pm.reportCompletedBolus(from: last)
                 }
+
+                // TK-H3 (temp-basal half): best-effort active temp-rate read.
+                // A failure here must NOT fail the poll, so it is awaited with
+                // try? and detached from the status updateState above. The reporter
+                // emits a mutable .tempBasal DoseEntry to Loop each cycle while a
+                // temp rate runs. No temp-rate command is in flight during a poll,
+                // so the (characteristic, opCode) routing stays unambiguous.
+                if let tempData = try? await sendAndReceive(TempRateStatusRequest(),
+                                                            responseType: TempRateStatusResponse.self),
+                   let tempResp = TempRateStatusResponse(cargo: tempData) {
+                    pm.reportActiveTempBasal(from: tempResp)
+                }
             } catch {
                 completion(error)
             }
@@ -423,7 +435,22 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.send(CancelBolusRequest(bolusId: bolusId))
+                // Await and verify the pump CancelBolusResponse instead of
+                // fire-and-forget. Loop must not be told the cancel succeeded
+                // until the pump confirms it.
+                let data = try await self.sendAndReceive(
+                    CancelBolusRequest(bolusId: bolusId),
+                    responseType: CancelBolusResponse.self
+                )
+                guard let resp = CancelBolusResponse(cargo: data), resp.success else {
+                    // NACK or unparseable: leave IOB uncertain so Loop does not
+                    // assume the bolus stopped.
+                    completion(.failure(.communication(nil)))
+                    return
+                }
+                // Confirmed cancel. Return no DoseEntry: Loop ignores the cancel
+                // payload, and the partial delivered volume reconciles on the next
+                // status poll via the bolus reporter watermark seam (separate path).
                 completion(.success(nil))
             } catch {
                 completion(.failure(.communication(error as? LocalizedError)))
@@ -449,7 +476,17 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.send(SetTempRateRequest(durationMinutes: durationMinutes, percent: percent))
+                // Mirror suspend/resume: await SetTempRateResponse and gate
+                // completion on resp.success instead of fire-and-forget. Confirm
+                // only that the pump accepted the command \u2014 nothing more.
+                let data = try await self.sendAndReceive(
+                    SetTempRateRequest(durationMinutes: durationMinutes, percent: percent),
+                    responseType: SetTempRateResponse.self
+                )
+                guard let resp = SetTempRateResponse(cargo: data), resp.success else {
+                    completion(.communication(nil))
+                    return
+                }
                 completion(nil)
             } catch {
                 completion(.communication(error as? LocalizedError))
