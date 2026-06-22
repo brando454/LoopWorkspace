@@ -258,6 +258,18 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                     state.lastSync = Date()
                 }
                 completion(nil)
+
+                // TK-H3/TK-C1: reconcile the most recently completed bolus into Loop.
+                // Best-effort: a LastBolusStatus failure must not fail the status poll,
+                // and an unreported bolus is retried next cycle (watermark unchanged).
+                // Safe alongside the 0xA5 opcode collision with SetTempRateResponse:
+                // routing is keyed on (characteristic, opCode) and no temp-rate request
+                // is in flight during a status poll.
+                if let lastBolusData = try? await sendAndReceive(LastBolusStatusV2Request(),
+                                                                 responseType: LastBolusStatusV2Response.self),
+                   let last = LastBolusStatusV2Response(cargo: lastBolusData) {
+                    pm.reportCompletedBolus(from: last)
+                }
             } catch {
                 completion(error)
             }
@@ -348,6 +360,15 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                 guard let resp = InitiateBolusResponse(cargo: initData), resp.success else {
                     completion(.communication(nil))
                     return
+                }
+                // TK-C3: record the active bolus the instant it is enacted, so it is
+                // cancellable (cancelBolus reads state.activeBolusId) before the next
+                // status poll observes it.
+                self.pumpManager?.updateState { state in
+                    state.activeBolusId = perm.bolusId
+                    state.activeBolusUnits = units
+                    state.activeBolusStartDate = Date()
+                    state.bolusState = .inProgress
                 }
                 completion(nil)
             } catch {

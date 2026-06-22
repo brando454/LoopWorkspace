@@ -98,6 +98,51 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
         }
     }
 
+    // MARK: - Delivered-dose reconciliation (TK-C1)
+
+    // Reconcile the most recently completed bolus (from a status poll's
+    // LastBolusStatusV2 read) into Loop. The reporter is re-seeded from the durable
+    // watermark each cycle: on a successful delegate completion the watermark
+    // advances (dedupe); on failure it does NOT, so the same bolus is re-reported
+    // next poll. Re-reporting a deduped event is safe; under-reporting delivered
+    // insulin is not (Loop would over-deliver). The optional completion fires after
+    // the persist decision and exists for deterministic testing.
+    func reportCompletedBolus(from last: LastBolusStatusV2Response, completion: (() -> Void)? = nil) {
+        stateQueue.async { [weak self] in
+            guard let self else { completion?(); return }
+
+            // The reporter is intentionally PER-CYCLE local, not an instance var:
+            // its watermark advances at makeBolusEvent build time and the fixed
+            // reporter API exposes no reset/seed mutator, so the only way to honor
+            // "re-seed from the durable watermark each cycle" is to construct a fresh
+            // reporter seeded from state.lastReportedBolusId on each call.
+            let reporter = TandemDoseReporter(lastReportedBolusId: self.state.lastReportedBolusId)
+            reporter.delegate = self
+
+            guard let event = reporter.makeBolusEvent(from: last, insulinType: self.state.insulinType) else {
+                completion?()
+                return
+            }
+
+            // lastReconciliation = the pump-confirmed delivery time of THIS bolus
+            // (LastBolusStatusV2Response.timestamp), never phone poll time.
+            let reconciliation = last.timestamp
+            let advancedId = reporter.reportedBolusIdForPersistence
+
+            reporter.report(events: [event], lastReconciliation: reconciliation) { [weak self] error in
+                guard let self else { completion?(); return }
+                self.stateQueue.async {
+                    // Confirm-before-persist: advance the durable watermark ONLY on success.
+                    if error == nil {
+                        self.state.lastReportedBolusId = advancedId
+                        self.delegateQueue.async { self.pumpManagerDelegate?.pumpManagerDidUpdateState(self) }
+                    }
+                    completion?()
+                }
+            }
+        }
+    }
+
     // MARK: - Bolus
 
     public func createBolusProgressReporter(reportingOn dispatchQueue: DispatchQueue) -> DoseProgressReporter? {
@@ -236,5 +281,32 @@ extension TandemPumpManager: AlertResponder {
 extension TandemPumpManager: AlertSoundVendor {
     public func getSoundBaseURL() -> URL? { nil }
     public func getSounds() -> [Alert.Sound] { [] }
+}
+
+// MARK: - TandemDoseReporterDelegate
+
+extension TandemPumpManager: TandemDoseReporterDelegate {
+    // Forward reconciled events straight into Loop. Incremental single events use
+    // replacePendingEvents: false (matches OmnipodKit's incremental reporting).
+    func tandemDoseReporter(
+        _ reporter: TandemDoseReporter,
+        hasNewPumpEvents events: [NewPumpEvent],
+        lastReconciliation: Date?,
+        completion: @escaping (_ error: Error?) -> Void
+    ) {
+        delegateQueue.async {
+            guard let delegate = self.pumpManagerDelegate else {
+                completion(nil)
+                return
+            }
+            delegate.pumpManager(
+                self,
+                hasNewPumpEvents: events,
+                lastReconciliation: lastReconciliation,
+                replacePendingEvents: false,
+                completion: completion
+            )
+        }
+    }
 }
 
