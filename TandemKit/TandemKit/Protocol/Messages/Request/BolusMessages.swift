@@ -69,8 +69,25 @@ struct InitiateBolusRequest: TandemRequest {
     // a populated foodVolume/correctionVolume split. Add a fuller initializer that
     // takes those inputs before wiring real Loop-commanded boluses; do not let
     // "everything is FOOD2" become a permanent assumption.
-    init(units: Double, bolusId: UInt16) {
-        self.totalVolume = UInt32(units * 1000)
+    // Resolution of bolus delivery, in units. Tandem delivers in 0.05 U
+    // increments; a commanded value is rounded to this grid before encode.
+    static let resolutionUnits: Double = 0.05
+
+    // Rounds a commanded dose to the delivery resolution. Returns nil for a
+    // non-finite, non-positive, or sub-half-step value (which would round to 0).
+    // 20 == 1 / 0.05 is exactly representable, so this avoids 0.05 float error.
+    static func roundedToResolution(_ units: Double) -> Double? {
+        guard units.isFinite, units > 0 else { return nil }
+        let rounded = (units * 20).rounded() / 20
+        return rounded > 0 ? rounded : nil
+    }
+
+    // Failable: a non-finite or non-positive dose is rejected here (TK-C4)
+    // rather than trapping in the UInt32 conversion. The .rounded() guards
+    // float dust on an already-resolution-rounded value (1.05 -> 1049.999).
+    init?(units: Double, bolusId: UInt16) {
+        guard units.isFinite, units > 0 else { return nil }
+        self.totalVolume = UInt32((units * 1000).rounded())
         self.bolusId = bolusId
         bolusTypeBitmask = 8   // FOOD2 (standard manual food bolus) per pumpX2
         foodVolume = 0         // separate component; 0 for a no-carb override bolus

@@ -356,8 +356,22 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     }
 
     func enactBolus(units: Double, completion: @escaping (PumpManagerError?) -> Void) {
+        // TK-C4: reject an invalid command BEFORE any pump traffic. A non-finite,
+        // non-positive, or over-max dose, or one that rounds below the delivery
+        // resolution, is a bad argument (.configuration) not a comms failure. The
+        // over-max check is on the RAW units so rounding cannot pull it under.
+        let maxUnits = pumpManager?.state.maximumBolusUnits ?? 25
+        guard units.isFinite, units > 0, units <= maxUnits else {
+            completion(.configuration(nil))
+            return
+        }
+        guard let roundedUnits = InitiateBolusRequest.roundedToResolution(units) else {
+            completion(.configuration(nil))
+            return
+        }
         Task { [weak self] in
             guard let self else { return }
+            var grantedBolusId: UInt16?
             do {
                 // Step 1: request permission and get bolusId
                 let permData = try await sendAndReceive(BolusPermissionRequest(),
@@ -366,10 +380,21 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                     completion(.communication(nil))
                     return
                 }
-                // Step 2: initiate the bolus using the granted bolusId
-                let initData = try await sendAndReceive(InitiateBolusRequest(units: units, bolusId: perm.bolusId),
+                // The lock is held from here on; record it so every post-grant
+                // exit releases it (TK-C5). A throw before this point holds no lock.
+                grantedBolusId = perm.bolusId
+                // Step 2: initiate the bolus using the granted, resolution-rounded dose.
+                guard let initiate = InitiateBolusRequest(units: roundedUnits, bolusId: perm.bolusId) else {
+                    // Defensive: roundedUnits is already finite and > 0, so this
+                    // should not happen, but never leave the permission lock held.
+                    await self.releasePermission(perm.bolusId)
+                    completion(.configuration(nil))
+                    return
+                }
+                let initData = try await sendAndReceive(initiate,
                                                        responseType: InitiateBolusResponse.self)
                 guard let resp = InitiateBolusResponse(cargo: initData), resp.success else {
+                    await self.releasePermission(perm.bolusId)
                     completion(.communication(nil))
                     return
                 }
@@ -378,14 +403,44 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                 // status poll observes it.
                 self.pumpManager?.updateState { state in
                     state.activeBolusId = perm.bolusId
-                    state.activeBolusUnits = units
+                    // Track the dose the pump was actually told to deliver
+                    // (resolution-rounded), not the raw command, so in-progress
+                    // state matches delivery when the command is off the 0.05 grid.
+                    state.activeBolusUnits = roundedUnits
                     state.activeBolusStartDate = Date()
                     state.bolusState = .inProgress
                 }
+                // TK-C5: release the permission lock on the confirmed-success exit
+                // too. The lock is a pre-delivery gate, not a record of an in-flight
+                // bolus; the active bolus is tracked by state above.
+                await self.releasePermission(perm.bolusId)
                 completion(nil)
             } catch {
+                // TK-C5: if the throw happened after the lock was granted, release
+                // it before reporting. A throw from the permission request itself
+                // leaves grantedBolusId nil, so nothing is released (none was held).
+                if let grantedBolusId {
+                    await self.releasePermission(grantedBolusId)
+                }
                 completion(.communication(error as? LocalizedError))
             }
+        }
+    }
+
+    // TK-C5: confirmed release of a granted bolus-permission lock. Awaits the
+    // pump response and checks success; a non-ack or thrown error is LOGGED ONLY
+    // and never alters the Loop-facing bolus outcome (it neither calls completion
+    // nor returns a value). Invoked only on post-grant exits of enactBolus.
+    private func releasePermission(_ bolusId: UInt16) async {
+        do {
+            let data = try await sendAndReceive(BolusPermissionReleaseRequest(bolusId: bolusId),
+                                               responseType: BolusPermissionReleaseResponse.self)
+            guard let resp = BolusPermissionReleaseResponse(cargo: data), resp.success else {
+                logger.error("BolusPermissionRelease NACK for bolusId \(bolusId)")
+                return
+            }
+        } catch {
+            logger.error("BolusPermissionRelease failed for bolusId \(bolusId): \(error)")
         }
     }
 

@@ -81,7 +81,7 @@ final class TandemMessageVectorTests: XCTestCase {
     // bolusTypeBitmask must be 8 (FOOD2), not 0. Do NOT relax these assertions —
     // they encode the bytes a real pump expects for a standard override bolus.
     func testInitiateBolusRequest_1u_matchesPumpX2Capture() throws {
-        let req = InitiateBolusRequest(units: 1.0, bolusId: 10650)
+        let req = try XCTUnwrap(InitiateBolusRequest(units: 1.0, bolusId: 10650))
         let expected = bytes([
             -24, 3, 0, 0,   // totalVolume = 1000 mU (LE)
             -102, 41,       // bolusId = 10650 (LE) = 9a 29
@@ -103,8 +103,8 @@ final class TandemMessageVectorTests: XCTestCase {
 
     // A narrower, always-on guard that does not depend on fixing init: the header
     // fields the pump reads first must be right regardless of the carb/type bug.
-    func testInitiateBolusRequest_totalVolumeAndIdAreCorrect() {
-        let req = InitiateBolusRequest(units: 1.0, bolusId: 10650)
+    func testInitiateBolusRequest_totalVolumeAndIdAreCorrect() throws {
+        let req = try XCTUnwrap(InitiateBolusRequest(units: 1.0, bolusId: 10650))
         let c = [UInt8](req.cargo())
         let total = UInt32(c[0]) | (UInt32(c[1]) << 8) | (UInt32(c[2]) << 16) | (UInt32(c[3]) << 24)
         let id = UInt16(c[4]) | (UInt16(c[5]) << 8)
