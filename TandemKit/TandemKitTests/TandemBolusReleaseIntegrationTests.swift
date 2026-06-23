@@ -75,10 +75,11 @@ final class TandemBolusReleaseIntegrationTests: XCTestCase {
     // invokes the central anyway (used only on the auth-success path).
     private func makeManager(
         recorder: TransportRecorder,
-        peripheral: RecordingPeripheral
+        peripheral: RecordingPeripheral,
+        maximumBolusUnits: Double = 25
     ) -> (TandemPeripheralManager, TandemPumpManager) {
         let state = TandemPumpState(basalRateSchedule: nil)
-        state.maximumBolusUnits = 25
+        state.maximumBolusUnits = maximumBolusUnits
         let pumpManager = TandemPumpManager(state: state, centralFactory: { _, _ in nil })
         let bleManager = TandemBLEManager(pumpManager: pumpManager, centralFactory: { _, _ in nil })
         let queue = DispatchQueue(label: "test.TandemBolusReleaseIntegration")
@@ -198,5 +199,64 @@ final class TandemBolusReleaseIntegrationTests: XCTestCase {
                        "no lock is held on a pre-grant rejection, so release must not fire")
         XCTAssertTrue(recorder.requestedResponseOpCodes.isEmpty,
                       "an invalid dose must produce no pump traffic at all")
+    }
+
+    // MARK: - Test: the max-units clamp reads live pump-manager state
+
+    // Proves enactBolus enforces maximumBolusUnits from the LIVE pump-manager
+    // state, not the hardcoded ?? 25 fallback. The fixture sets a small max (5.0)
+    // and requests a dose above it (10.0). Because the over-max guard rejects with
+    // .configuration BEFORE any pump traffic, the request must produce no
+    // permission request and no release.
+    //
+    // This test is decisive about retention: it only passes while the pump manager
+    // is retained. If it were discarded (the prior let (pm, _) bug), maxUnits would
+    // fall back to 25, a 10.0 request would clear the guard, and the test would see
+    // pump traffic — failing. So it is both new coverage that the clamp reads state
+    // AND a guard against regressing the retention fix above.
+    func testOverMaxBolusRejectedFromLiveStateNotFallback() {
+        let recorder = TransportRecorder()
+        let peripheral = RecordingPeripheral()
+        // Small max well under the 25 fallback. A 10.0 U request is over this max
+        // but UNDER the fallback, so the two paths diverge observably.
+        let (pm, pumpManager) = makeManager(recorder: recorder, peripheral: peripheral, maximumBolusUnits: 5.0)
+
+        let exp = expectation(description: "enactBolus completed")
+        pm.enactBolus(units: 10.0) { error in
+            guard case .configuration = error else {
+                XCTFail("an over-max dose must be rejected with .configuration, got \(String(describing: error))")
+                exp.fulfill(); return
+            }
+            exp.fulfill()
+        }
+        waitForExpectations(timeout: 5)
+        withExtendedLifetime(pumpManager) {}
+        XCTAssertFalse(recorder.releaseWasRequested,
+                       "an over-max dose is rejected before any lock is held, so release must not fire")
+        XCTAssertTrue(recorder.requestedResponseOpCodes.isEmpty,
+                      "an over-max dose must produce no pump traffic at all — proving the clamp read live state, not the fallback")
+    }
+
+    // Negative-side control for the clamp: a dose at the small max boundary must be
+    // ACCEPTED and proceed to pump traffic. Without this, the test above could pass
+    // on any rejection (e.g. if the max were misread as 0); pairing them pins the
+    // boundary to the live state value, not an accident.
+    func testAtMaxBolusAcceptedFromLiveState() {
+        let recorder = TransportRecorder()
+        let peripheral = RecordingPeripheral()
+        let (pm, pumpManager) = makeManager(recorder: recorder, peripheral: peripheral, maximumBolusUnits: 5.0)
+        recorder.initiateOutcome = .success
+
+        let exp = expectation(description: "enactBolus completed")
+        // 5.0 U is exactly the max (guard is units <= maxUnits) and over the 0.05
+        // resolution grid, so it must clear the guard and proceed.
+        pm.enactBolus(units: 5.0) { error in
+            XCTAssertNil(error, "a dose at the max must be accepted")
+            exp.fulfill()
+        }
+        waitForExpectations(timeout: 5)
+        withExtendedLifetime(pumpManager) {}
+        XCTAssertTrue(recorder.requestedResponseOpCodes.contains(0xA3),
+                      "a dose at the max must reach the permission request — proving the clamp read live state, not a misread bound")
     }
 }
