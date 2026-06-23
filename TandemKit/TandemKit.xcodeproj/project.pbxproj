@@ -17,6 +17,7 @@
 		117B3FDF6D2062B2EC703874 /* LastBolusStatusMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4BDD71E4CC4B3C1933476C7 /* LastBolusStatusMessages.swift */; };
 		19C80E00AF1D9426681F5482 /* PendingResponseTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7947F86E48A076358AC55AB /* PendingResponseTable.swift */; };
 		28C3AF67FA9DC4CBFCD2C428 /* BLEConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260A10066C1DFD0AD86BF887 /* BLEConstants.swift */; };
+		2F275772064B255DADAA522A /* TandemBasalScheduleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0499F5E89630143C0D6D0933 /* TandemBasalScheduleTests.swift */; };
 		32B7531DAEADC8844F475C48 /* PacketFramer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BF6CC38058B0C112393CEA6 /* PacketFramer.swift */; };
 		3F7B3C4EDE35A0FFC98C7CF9 /* TandemPumpManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ED9ED6F07EBD3AE3056F9C3 /* TandemPumpManager.swift */; };
 		43D6AF212B52F86D7331DAE5 /* TandemKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96D7D617AC083C7ABCBB8FED /* TandemKit.framework */; };
@@ -150,6 +151,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0499F5E89630143C0D6D0933 /* TandemBasalScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemBasalScheduleTests.swift; sourceTree = "<group>"; };
 		19DB2695FF11872F61F459D3 /* CRC16Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CRC16Tests.swift; sourceTree = "<group>"; };
 		1BD325085E3D9918C9A7C36A /* TandemAuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemAuthState.swift; sourceTree = "<group>"; };
 		1BF6CC38058B0C112393CEA6 /* PacketFramer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketFramer.swift; sourceTree = "<group>"; };
@@ -350,6 +352,7 @@
 				ADE233B92C71A461D1EB3B66 /* MobiHandshakeTests.swift */,
 				A9F15CAA9EF8E5F289E45586 /* PendingResponseTableTests.swift */,
 				DE3128613CD96F34670A8484 /* README.md */,
+				0499F5E89630143C0D6D0933 /* TandemBasalScheduleTests.swift */,
 				297CBFD17E71E3449EE4E0B6 /* TandemBolusGuardTests.swift */,
 				8103CDA5C4FE666DA5C0AB72 /* TandemBolusReleaseIntegrationTests.swift */,
 				9705132EC8A390B413F14096 /* TandemDoseReporterTests.swift */,
@@ -639,6 +642,7 @@
 				5ED1C754407408BAD2BB7CE0 /* ECJPAKEZKPTests.swift in Sources */,
 				942E56461BEF98C08C39D509 /* MobiHandshakeTests.swift in Sources */,
 				542CC1CF0327CFA09112204C /* PendingResponseTableTests.swift in Sources */,
+				2F275772064B255DADAA522A /* TandemBasalScheduleTests.swift in Sources */,
 				BBEA470F1967B56271DF92A8 /* TandemBolusGuardTests.swift in Sources */,
 				C16C6F6837143D9154BB39CA /* TandemBolusReleaseIntegrationTests.swift in Sources */,
 				7739B6697215074F6836084D /* TandemDoseReporterTests.swift in Sources */,

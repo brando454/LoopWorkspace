@@ -546,13 +546,16 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     func enactTempBasal(
         unitsPerHour: Double,
         duration: TimeInterval,
+        at effectiveDate: Date = Date(),
         completion: @escaping (PumpManagerError?) -> Void
     ) {
         guard let schedule = pumpManager?.state.basalRateSchedule else {
             completion(.configuration(nil))
             return
         }
-        let currentRate = schedule.currentBasalRate()
+        // H1 (TK-H1): evaluate the scheduled rate at the dose's effective date
+        // using the schedule's own timeZone, not Date() against device locale.
+        let currentRate = schedule.scheduledBasalRate(at: effectiveDate)
         guard currentRate > 0 else { completion(.configuration(nil)); return }
 
         let percent = UInt16(min(250, max(0, (unitsPerHour / currentRate) * 100)))

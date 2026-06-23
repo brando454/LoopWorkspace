@@ -158,7 +158,7 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
         case .tempBasal:
             if let endDate = activeTempRateEndDate {
                 let rate = Double(activeTempRatePercent ?? 100) / 100.0 *
-                    (basalRateSchedule?.currentBasalRate() ?? 0)
+                    (basalRateSchedule?.scheduledBasalRate(at: lastSync) ?? 0)
                 let dose = DoseEntry(
                     type: .tempBasal,
                     startDate: lastSync,
@@ -194,10 +194,12 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
 }
 
 extension BasalRateSchedule {
-    func currentBasalRate() -> Double {
-        let now = Date()
-        let startOfDay = Calendar.current.startOfDay(for: now)
-        let elapsed = now.timeIntervalSince(startOfDay)
-        return items.last(where: { $0.startTime <= elapsed })?.value ?? 0
+    // H1 (TK-H1): the prior hand-rolled lookup used Calendar.current.startOfDay
+    // and Date(), which selects the wrong segment when the schedule timeZone
+    // differs from device locale and breaks across a DST boundary. LoopKit's
+    // value(at:) honors the schedule's own timeZone and accepts the effective
+    // date, so we route through it instead of recomputing elapsed-since-midnight.
+    func scheduledBasalRate(at date: Date) -> Double {
+        return value(at: date)
     }
 }
