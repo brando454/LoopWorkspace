@@ -31,6 +31,20 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     // otherwise leak and the operation would hang forever.
     private let requestTimeout: TimeInterval = 10
 
+    // Test-infrastructure seam. The single BLE send-and-receive I/O boundary,
+    // expressed as a replaceable closure over an erased request plus the
+    // RESPONSEs (characteristic, opCode). The real continuation / queue /
+    // pending / timeout / send machinery is installed once in init, after
+    // super.init(). It is a var ONLY so test setup can substitute a recording
+    // mock; production sets it exactly once in init and never mutates it again,
+    // which preserves the @unchecked Sendable contract (no concurrent writes).
+    typealias SendAndReceiveTransport =
+        (_ request: any TandemRequest, _ characteristic: CBUUID, _ opCode: UInt8) async throws -> Data
+
+    var sendAndReceiveTransport: SendAndReceiveTransport = { _, _, _ in
+        throw TandemBLEError.notConnected
+    }
+
     // Receive buffer: accumulate chunks per characteristic
     private var receiveBuffers: [CBUUID: [Data]] = [:]
 
@@ -49,6 +63,56 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         self.queue = queue
         super.init()
         peripheral.delegate = self
+
+        // Install the real transport (Option A seam). This is the FORMER body of
+        // sendAndReceive<Response>, relocated verbatim: the only substitutions are
+        // Response.characteristic -> characteristic and Response.opCode -> opCode,
+        // which are now closure parameters. Captured weakly to avoid a retain cycle
+        // (self stores this closure). Set once, here; never reassigned in production.
+        sendAndReceiveTransport = { [weak self] request, characteristic, opCode in
+            guard let self else { throw TandemBLEError.notConnected }
+            return try await withCheckedThrowingContinuation { cont in
+                self.queue.async { [weak self] in
+                    guard let self else {
+                        cont.resume(throwing: TandemBLEError.notConnected)
+                        return
+                    }
+
+                    // resumeOnce guards against double-resume: whichever of
+                    // response / timeout / send-error fires first wins; the rest
+                    // are no-ops because the table entry is already gone.
+                    let resumed = ResumeGuard()
+
+                    let token = self.pending.register(
+                        characteristic: characteristic,
+                        opCode: opCode
+                    ) { result in
+                        guard resumed.tryConsume() else { return }
+                        cont.resume(with: result)
+                    }
+
+                    // Arm timeout on the same queue.
+                    self.queue.asyncAfter(deadline: .now() + self.requestTimeout) { [weak self] in
+                        guard let self else { return }
+                        // fail() is a no-op if the entry was already resolved.
+                        self.pending.fail(token: token, error: TandemBLEError.timeout)
+                    }
+
+                    // Send the request. If serialization/write fails, fail this exact
+                    // entry by token (not "first matching opcode").
+                    Task { [weak self] in
+                        guard let self else { return }
+                        do {
+                            try await self.send(request)
+                        } catch {
+                            self.queue.async {
+                                self.pending.fail(token: token, error: error)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     func cleanup() {
@@ -298,51 +362,17 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     //
     // All table mutation and the send happen on `queue`, keeping this request's
     // bookkeeping serialized with CoreBluetooth's callbacks.
+    // Thin typed wrapper over the transport seam. Resolves the RESPONSE types
+    // characteristic + opCode and forwards to sendAndReceiveTransport, which
+    // holds the actual continuation / queue / pending / timeout / send machinery
+    // (installed in init, replaceable by tests). Keeping THIS signature unchanged
+    // is what lets every call site stay byte-for-byte identical -- only the body
+    // moved into the closure.
     private func sendAndReceive<Response: TandemResponse>(
         _ request: some TandemRequest,
         responseType: Response.Type
     ) async throws -> Data {
-        try await withCheckedThrowingContinuation { cont in
-            queue.async { [weak self] in
-                guard let self else {
-                    cont.resume(throwing: TandemBLEError.notConnected)
-                    return
-                }
-
-                // resumeOnce guards against double-resume: whichever of
-                // response / timeout / send-error fires first wins; the rest
-                // are no-ops because the table entry is already gone.
-                let resumed = ResumeGuard()
-
-                let token = self.pending.register(
-                    characteristic: Response.characteristic,
-                    opCode: Response.opCode
-                ) { result in
-                    guard resumed.tryConsume() else { return }
-                    cont.resume(with: result)
-                }
-
-                // Arm timeout on the same queue.
-                self.queue.asyncAfter(deadline: .now() + self.requestTimeout) { [weak self] in
-                    guard let self else { return }
-                    // fail() is a no-op if the entry was already resolved.
-                    self.pending.fail(token: token, error: TandemBLEError.timeout)
-                }
-
-                // Send the request. If serialization/write fails, fail this exact
-                // entry by token (not "first matching opcode").
-                Task { [weak self] in
-                    guard let self else { return }
-                    do {
-                        try await self.send(request)
-                    } catch {
-                        self.queue.async {
-                            self.pending.fail(token: token, error: error)
-                        }
-                    }
-                }
-            }
-        }
+        try await sendAndReceiveTransport(request, Response.characteristic, Response.opCode)
     }
 
     // Single-shot guard so a continuation is resumed exactly once.

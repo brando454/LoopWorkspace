@@ -154,7 +154,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "961D0B3BA2A4C15EE33EFCDD"
+               BlueprintIdentifier = "B558227FB03818C04D442623"
                BuildableName = "TandemKitPlugin.loopplugin"
                BlueprintName = "TandemKitPlugin"
                ReferencedContainer = "container:TandemKit/TandemKit.xcodeproj">
@@ -557,7 +557,7 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "AE5B0F7394C191D7D7EE3A87"
+               BlueprintIdentifier = "B7D25612D4F293BEF48C278E"
                BuildableName = "TandemKitTests.xctest"
                BlueprintName = "TandemKitTests"
                ReferencedContainer = "container:TandemKit/TandemKit.xcodeproj">
