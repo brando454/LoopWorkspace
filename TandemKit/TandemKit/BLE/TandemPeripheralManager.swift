@@ -7,7 +7,7 @@ import os.log
 // Drives the 4-step initialization, then auth, then handles ongoing requests.
 final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked Sendable {
 
-    private let peripheral: CBPeripheral
+    private let peripheral: TandemPeripheral
     private weak var bleManager: TandemBLEManager?
     private weak var pumpManager: TandemPumpManager?
     private let logger = Logger(subsystem: "com.loopandlearn.TandemKit", category: "TandemPeripheralManager")
@@ -56,7 +56,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     private var notificationsEnabled = false
     private var notificationsSubscribed = 0
 
-    init(peripheral: CBPeripheral, bleManager: TandemBLEManager, pumpManager: TandemPumpManager, queue: DispatchQueue) {
+    init(peripheral: TandemPeripheral, bleManager: TandemBLEManager, pumpManager: TandemPumpManager, queue: DispatchQueue) {
         self.peripheral = peripheral
         self.bleManager = bleManager
         self.pumpManager = pumpManager
