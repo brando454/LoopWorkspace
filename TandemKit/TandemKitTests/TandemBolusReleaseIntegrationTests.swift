@@ -120,7 +120,13 @@ final class TandemBolusReleaseIntegrationTests: XCTestCase {
     func testReleaseFiresOnConfirmedSuccessExit() {
         let recorder = TransportRecorder()
         let peripheral = RecordingPeripheral()
-        let (pm, _) = makeManager(recorder: recorder, peripheral: peripheral)
+        // Retain the pump manager for the life of the test: TandemPeripheralManager
+        // holds it weakly, and enactBolus reads pumpManager?.state (e.g. the
+        // maximumBolusUnits clamp). A discarded pump manager deallocates before
+        // enactBolus runs, so the path would read its hardcoded fallback instead of
+        // real state — passing for the wrong reason and masking any future
+        // state-dependent regression on the release path.
+        let (pm, pumpManager) = makeManager(recorder: recorder, peripheral: peripheral)
         recorder.initiateOutcome = .success
 
         let exp = expectation(description: "enactBolus completed")
@@ -129,6 +135,7 @@ final class TandemBolusReleaseIntegrationTests: XCTestCase {
             exp.fulfill()
         }
         waitForExpectations(timeout: 5)
+        withExtendedLifetime(pumpManager) {}
         XCTAssertTrue(recorder.releaseWasRequested,
                       "permission lock must be released on the confirmed-success exit")
     }
@@ -138,7 +145,7 @@ final class TandemBolusReleaseIntegrationTests: XCTestCase {
     func testReleaseFiresOnInitiateNackExit() {
         let recorder = TransportRecorder()
         let peripheral = RecordingPeripheral()
-        let (pm, _) = makeManager(recorder: recorder, peripheral: peripheral)
+        let (pm, pumpManager) = makeManager(recorder: recorder, peripheral: peripheral)
         recorder.initiateOutcome = .nack
 
         let exp = expectation(description: "enactBolus completed")
@@ -147,6 +154,7 @@ final class TandemBolusReleaseIntegrationTests: XCTestCase {
             exp.fulfill()
         }
         waitForExpectations(timeout: 5)
+        withExtendedLifetime(pumpManager) {}
         XCTAssertTrue(recorder.releaseWasRequested,
                       "permission lock must be released on the initiate-NACK exit")
     }
@@ -157,7 +165,7 @@ final class TandemBolusReleaseIntegrationTests: XCTestCase {
     func testReleaseFiresOnThrowAfterGrantExit() {
         let recorder = TransportRecorder()
         let peripheral = RecordingPeripheral()
-        let (pm, _) = makeManager(recorder: recorder, peripheral: peripheral)
+        let (pm, pumpManager) = makeManager(recorder: recorder, peripheral: peripheral)
         recorder.initiateOutcome = .throwError
 
         let exp = expectation(description: "enactBolus completed")
@@ -166,6 +174,7 @@ final class TandemBolusReleaseIntegrationTests: XCTestCase {
             exp.fulfill()
         }
         waitForExpectations(timeout: 5)
+        withExtendedLifetime(pumpManager) {}
         XCTAssertTrue(recorder.releaseWasRequested,
                       "permission lock must be released when initiate throws after grant")
     }
@@ -176,7 +185,7 @@ final class TandemBolusReleaseIntegrationTests: XCTestCase {
     func testReleaseDoesNotFireOnPreGrantRejection() {
         let recorder = TransportRecorder()
         let peripheral = RecordingPeripheral()
-        let (pm, _) = makeManager(recorder: recorder, peripheral: peripheral)
+        let (pm, pumpManager) = makeManager(recorder: recorder, peripheral: peripheral)
 
         let exp = expectation(description: "enactBolus completed")
         pm.enactBolus(units: -1.0) { error in
@@ -184,6 +193,7 @@ final class TandemBolusReleaseIntegrationTests: XCTestCase {
             exp.fulfill()
         }
         waitForExpectations(timeout: 5)
+        withExtendedLifetime(pumpManager) {}
         XCTAssertFalse(recorder.releaseWasRequested,
                        "no lock is held on a pre-grant rejection, so release must not fire")
         XCTAssertTrue(recorder.requestedResponseOpCodes.isEmpty,
