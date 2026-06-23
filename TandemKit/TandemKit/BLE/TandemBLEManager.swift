@@ -244,4 +244,28 @@ enum TandemBLEError: Error {
     case notConnected
     case timeout
     case noResponse
+    // Raised by the central delivery-precondition gate (TK-H5) when a request
+    // whose type sets modifiesInsulinDelivery == true is submitted while the
+    // pump is not connected or has no authentication key. The associated
+    // String names the failed precondition for diagnostics and is greppable
+    // in logs. A delivery command must never transmit unless connection AND
+    // auth are both established.
+    case deliveryPreconditionUnmet(String)
+}
+
+extension TandemBLEError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .bluetoothNotAvailable:
+            return "Bluetooth is not available."
+        case .notConnected:
+            return "The pump is not connected."
+        case .timeout:
+            return "The pump did not respond in time."
+        case .noResponse:
+            return "The pump returned no response."
+        case .deliveryPreconditionUnmet(let reason):
+            return "Delivery precondition not met: \(reason)"
+        }
+    }
 }

@@ -203,6 +203,12 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     // MARK: - Send / receive
 
     func send(_ request: some TandemRequest) async throws {
+        // TK-H5 central delivery-precondition gate. This is the single universal
+        // write path: the production request/response transport closure calls
+        // try await self.send(request) (see init), so guarding here covers both
+        // fire-and-forget and request/response delivery from one chokepoint.
+        try assertDeliveryPreconditions(for: request)
+
         let txId = txID.next()
         let cargo = request.cargo()
         let chunkSize = (type(of: request).characteristic == TandemCharacteristicUUID.control)
@@ -232,6 +238,32 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
 
         for chunk in chunks {
             peripheral.writeValue(chunk, for: char, type: .withResponse)
+        }
+    }
+
+    // TK-H5: central precondition gate for insulin-delivery commands.
+    //
+    // Requests whose type sets modifiesInsulinDelivery == true may only be
+    // transmitted when the pump is connected AND an authentication key is
+    // present. Scope is connection-and-auth only by design: dose limits are
+    // owned upstream by enactBolus/enactTempBasal and are not re-checked here.
+    //
+    // pumpManager is a weak reference. If it has deallocated we cannot read
+    // connectionState or authKey, so a delivery request fails closed (throws)
+    // rather than transmitting insulin against state we cannot verify. A
+    // non-delivery request passes unconditionally regardless of pump-manager
+    // liveness, connection, or auth.
+    private func assertDeliveryPreconditions(for request: some TandemRequest) throws {
+        guard type(of: request).modifiesInsulinDelivery else { return }
+
+        guard let state = pumpManager?.state else {
+            throw TandemBLEError.deliveryPreconditionUnmet("pump manager unavailable")
+        }
+        guard state.connectionState == .connected else {
+            throw TandemBLEError.deliveryPreconditionUnmet("not connected")
+        }
+        guard state.authKey != nil else {
+            throw TandemBLEError.deliveryPreconditionUnmet("missing auth key")
         }
     }
 
