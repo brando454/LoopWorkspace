@@ -114,6 +114,14 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.loopandlearn.TandemKitTests
         # Unit-test bundle has no hand-written Info.plist; let Xcode generate one.
         GENERATE_INFOPLIST_FILE: YES
+        # Offline tests build TandemBLEManager with a nil-returning central
+        # factory, so no live CoreBluetooth manager is created and no TCC
+        # authorization probe runs — that is the real fix for the host crash.
+        # This key does NOT protect the bare command-line xctest agent (TCC reads
+        # the usage description from the running executable, which the agent lacks
+        # — the bundle key is ignored). It is kept only as defense-in-depth for any
+        # future host-application test configuration.
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Offline tests do not access Bluetooth; no device is connected."
         CODE_SIGNING_ALLOWED: NO
         FRAMEWORK_SEARCH_PATHS: "$(BUILT_PRODUCTS_DIR) $(inherited)"
     dependencies:

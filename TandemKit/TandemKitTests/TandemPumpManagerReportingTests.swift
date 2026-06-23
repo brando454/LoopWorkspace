@@ -34,7 +34,9 @@ final class TandemPumpManagerReportingTests: XCTestCase {
     private func makeManager(insulinType: InsulinType? = .novolog) -> TandemPumpManager {
         let state = TandemPumpState(basalRateSchedule: nil)
         state.insulinType = insulinType
-        return TandemPumpManager(state: state)
+        // nil central factory: offline construction with no live CoreBluetooth
+        // manager, so no TCC authorization probe can SIGABRT the xctest host.
+        return TandemPumpManager(state: state, centralFactory: { _, _ in nil })
     }
 
     // (a) completed-bolus status produces the correct NewPumpEvent payload, and
@@ -195,7 +197,7 @@ final class TandemPumpManagerReportingTests: XCTestCase {
         let schedule = BasalRateSchedule(dailyItems: [RepeatingScheduleValue(startTime: 0, value: scheduledRate)])!
         let state = TandemPumpState(basalRateSchedule: schedule)
         state.insulinType = .novolog
-        let manager = TandemPumpManager(state: state)
+        let manager = TandemPumpManager(state: state, centralFactory: { _, _ in nil })
         let delegate = MockPumpManagerDelegate()
         manager.pumpManagerDelegate = delegate
         return (manager, delegate)

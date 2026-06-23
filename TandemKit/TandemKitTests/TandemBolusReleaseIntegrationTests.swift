@@ -69,17 +69,18 @@ final class TandemBolusReleaseIntegrationTests: XCTestCase {
     // MARK: - Fixture
 
     // Builds the real object graph offline. TandemPumpManager(state:) is proven
-    // offline-constructible by the reporting tests; its CBCentralManager sits
-    // unauthorized and never connects. bleManager is required by init but the
-    // bolus path never invokes it (used only on the auth-success path).
+    // offline-constructible by the reporting tests. bleManager is constructed
+    // with a nil-returning central factory so no live CoreBluetooth manager (and
+    // no state-restoration authorization probe) is created; the bolus path never
+    // invokes the central anyway (used only on the auth-success path).
     private func makeManager(
         recorder: TransportRecorder,
         peripheral: RecordingPeripheral
     ) -> (TandemPeripheralManager, TandemPumpManager) {
         let state = TandemPumpState(basalRateSchedule: nil)
         state.maximumBolusUnits = 25
-        let pumpManager = TandemPumpManager(state: state)
-        let bleManager = TandemBLEManager(pumpManager: pumpManager)
+        let pumpManager = TandemPumpManager(state: state, centralFactory: { _, _ in nil })
+        let bleManager = TandemBLEManager(pumpManager: pumpManager, centralFactory: { _, _ in nil })
         let queue = DispatchQueue(label: "test.TandemBolusReleaseIntegration")
 
         let pm = TandemPeripheralManager(

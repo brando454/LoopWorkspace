@@ -20,6 +20,13 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
     public var delegateQueue: DispatchQueue! = DispatchQueue(label: "com.loopandlearn.TandemKit.delegateQueue", qos: .utility)
     public weak var pumpManagerDelegate: PumpManagerDelegate?
 
+    /// H2 (TK-H2): how to handle a temp rate whose computed percentage exceeds
+    /// the pump ceiling. Defaults to .reject (conservative): an over-ceiling
+    /// request fails so Loop recomputes, rather than silently capping. Settable
+    /// at runtime to .reportEnactedRate to proceed at the ceiling and report the
+    /// true enacted rate. Read by the peripheral manager in enactTempBasal.
+    public var tempRateCeilingPolicy: TempRateCeilingPolicy = .reject
+
     public var supportedBasalRates: [Double] { TandemPumpManager.onboardingSupportedBasalRates }
     public var supportedBolusVolumes: [Double] { TandemPumpManager.onboardingSupportedBolusVolumes }
     public var supportedMaximumBolusVolumes: [Double] { TandemPumpManager.onboardingSupportedMaximumBolusVolumes }
@@ -57,6 +64,16 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
     public init(state: TandemPumpState) {
         self.state = state
         self.bleManager = TandemBLEManager(pumpManager: self)
+    }
+
+    // Test seam: construct the internal BLE manager with an injected central
+    // factory so offline tests can pass a nil-returning factory. No live
+    // CoreBluetooth manager is built and no TCC authorization probe runs, which
+    // would otherwise SIGABRT the bare xctest host. Internal, not public —
+    // production always goes through init(state:) and keeps the live central.
+    init(state: TandemPumpState, centralFactory: @escaping TandemBLEManager.CentralFactory) {
+        self.state = state
+        self.bleManager = TandemBLEManager(pumpManager: self, centralFactory: centralFactory)
     }
 
     public convenience init?(rawState: RawStateValue) {

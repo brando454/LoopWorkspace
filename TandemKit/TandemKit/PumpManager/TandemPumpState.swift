@@ -19,6 +19,21 @@ public enum TandemConnectionState: Int, Sendable {
     case connected = 3
 }
 
+/// H2 (TK-H2): policy for a requested temp rate whose computed percentage
+/// exceeds the pump ceiling (250%). The prior code silently clamped to 250%
+/// and reported success, so Loop believed it enacted the requested rate while
+/// the pump delivered less and IOB drifted. This seam makes the behavior an
+/// explicit, configurable choice rather than a hidden truncation.
+public enum TempRateCeilingPolicy: Int, Sendable {
+    /// Reject the over-ceiling request with an error so Loop knows its
+    /// instruction was not honored and recomputes on the next cycle.
+    case reject = 0
+    /// Proceed at the clamped ceiling rate, but record the actually-enacted
+    /// percent into state so basalDeliveryState reports the true enacted
+    /// absolute rate back to Loop and IOB stays truthful.
+    case reportEnactedRate = 1
+}
+
 public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
     public typealias RawValue = PumpManager.RawStateValue
 
@@ -200,6 +215,13 @@ extension BasalRateSchedule {
     // value(at:) honors the schedule's own timeZone and accepts the effective
     // date, so we route through it instead of recomputing elapsed-since-midnight.
     func scheduledBasalRate(at date: Date) -> Double {
-        return value(at: date)
+        // LoopKit's value(at:) is between(date,date).first!, which force-unwraps.
+        // A zero-width point query can return an empty interval at degenerate
+        // offsets, trapping. Query the interval ourselves and fall back to the
+        // first scheduled item rather than crashing the delivery path.
+        if let match = between(start: date, end: date).first {
+            return match.value
+        }
+        return items.first?.value ?? 0
     }
 }

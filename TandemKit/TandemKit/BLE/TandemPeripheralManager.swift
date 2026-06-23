@@ -558,8 +558,33 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         let currentRate = schedule.scheduledBasalRate(at: effectiveDate)
         guard currentRate > 0 else { completion(.configuration(nil)); return }
 
-        let percent = UInt16(min(250, max(0, (unitsPerHour / currentRate) * 100)))
+        // H2 (TK-H2): compute the raw percentage and detect the over-ceiling
+        // case explicitly instead of swallowing it inside a min(250,...) clamp.
+        let rawPercent = max(0, (unitsPerHour / currentRate) * 100)
+        let ceiling = 250.0
+        let exceedsCeiling = rawPercent > ceiling
+        let policy = pumpManager?.tempRateCeilingPolicy ?? .reject
+
+        if exceedsCeiling && policy == .reject {
+            // Tell Loop plainly the rate could not be honored so it recomputes,
+            // rather than silently delivering less than requested.
+            completion(.deviceState(TempRateCeilingError(
+                requestedPercent: rawPercent,
+                ceilingPercent: ceiling,
+                requestedRate: unitsPerHour,
+                scheduledRate: currentRate
+            )))
+            return
+        }
+
+        // Either within ceiling, or over-ceiling under .reportEnactedRate:
+        // clamp to the ceiling for the wire command. When we clamped an
+        // over-ceiling request, we will record the actually-enacted percent
+        // into state on confirmed success so basalDeliveryState reports the
+        // true enacted absolute rate to Loop.
+        let enactedPercent = UInt16(min(ceiling, rawPercent))
         let durationMinutes = UInt32(duration / 60)
+        let endDate = effectiveDate.addingTimeInterval(duration)
 
         Task { [weak self] in
             guard let self else { return }
@@ -568,17 +593,43 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                 // completion on resp.success instead of fire-and-forget. Confirm
                 // only that the pump accepted the command \u2014 nothing more.
                 let data = try await self.sendAndReceive(
-                    SetTempRateRequest(durationMinutes: durationMinutes, percent: percent),
+                    SetTempRateRequest(durationMinutes: durationMinutes, percent: enactedPercent),
                     responseType: SetTempRateResponse.self
                 )
                 guard let resp = SetTempRateResponse(cargo: data), resp.success else {
                     completion(.communication(nil))
                     return
                 }
+                // H2: on confirmed success of a clamped over-ceiling request,
+                // record the enacted percent and end date so the reported
+                // absolute rate reflects what the pump actually delivers.
+                if exceedsCeiling {
+                    self.pumpManager?.updateState { state in
+                        state.activeTempRatePercent = UInt8(min(250, enactedPercent))
+                        state.activeTempRateEndDate = endDate
+                        state.basalState = .tempBasal
+                    }
+                }
                 completion(nil)
             } catch {
                 completion(.communication(error as? LocalizedError))
             }
         }
+    }
+}
+
+/// H2 (TK-H2): carried by .deviceState when an over-ceiling temp rate is
+/// rejected, so the failure is diagnostic rather than opaque.
+struct TempRateCeilingError: LocalizedError {
+    let requestedPercent: Double
+    let ceilingPercent: Double
+    let requestedRate: Double
+    let scheduledRate: Double
+
+    var errorDescription: String? {
+        String(
+            format: "Requested temp rate %.3f U/hr is %.0f%% of the scheduled %.3f U/hr, exceeding the pump ceiling of %.0f%%.",
+            requestedRate, requestedPercent, scheduledRate, ceilingPercent
+        )
     }
 }

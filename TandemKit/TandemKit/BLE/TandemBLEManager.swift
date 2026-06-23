@@ -9,23 +9,44 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
 
     weak var pumpManager: TandemPumpManager?
 
-    private var central: CBCentralManager!
+    private var central: CBCentralManager?
     private let managerQueue = DispatchQueue(label: "com.loopandlearn.TandemKit.bleManagerQueue", qos: .utility)
+
+    // Constructs the live CoreBluetooth central. Factored out so offline tests
+    // can inject a factory that returns nil, avoiding the eager state-restoration
+    // authorization probe that the CBCentralManagerOptionRestoreIdentifierKey
+    // triggers — that probe SIGABRTs the bare xctest host on platforms where TCC
+    // reads the usage description from the running executable (which the
+    // command-line xctest agent lacks). Production keeps the restoring central.
+    typealias CentralFactory = (_ delegate: CBCentralManagerDelegate, _ queue: DispatchQueue) -> CBCentralManager?
+
+    private static let liveCentralFactory: CentralFactory = { delegate, queue in
+        CBCentralManager(
+            delegate: delegate,
+            queue: queue,
+            options: [CBCentralManagerOptionRestoreIdentifierKey: "com.loopandlearn.TandemKit.bleManager"]
+        )
+    }
     private var peripheral: CBPeripheral?
     private var peripheralManager: TandemPeripheralManager?
     private let logger = Logger(subsystem: "com.loopandlearn.TandemKit", category: "TandemBLEManager")
 
     private var connectCompletion: ((Error?) -> Void)?
 
-    init(pumpManager: TandemPumpManager) {
+    convenience init(pumpManager: TandemPumpManager) {
+        self.init(pumpManager: pumpManager, centralFactory: TandemBLEManager.liveCentralFactory)
+    }
+
+    // Designated initializer. Production reaches it via the convenience init,
+    // which supplies the live restoring central; tests inject a factory
+    // returning nil so no authorization probe ever runs. When the factory
+    // returns nil the manager exists but can never connect — ensureConnected
+    // fails fast with .bluetoothNotAvailable.
+    init(pumpManager: TandemPumpManager, centralFactory: CentralFactory) {
         self.pumpManager = pumpManager
         super.init()
         managerQueue.sync {
-            self.central = CBCentralManager(
-                delegate: self,
-                queue: managerQueue,
-                options: [CBCentralManagerOptionRestoreIdentifierKey: "com.loopandlearn.TandemKit.bleManager"]
-            )
+            self.central = centralFactory(self, managerQueue)
         }
     }
 
@@ -100,6 +121,11 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
     }
 
     private func ensureConnected(_ completion: @escaping (Error?) -> Void) {
+        // No live central (offline test construction): cannot connect.
+        guard let central else {
+            completion(TandemBLEError.bluetoothNotAvailable)
+            return
+        }
         // Require both BLE link AND completed auth before calling completion.
         if let p = peripheral, p.state == .connected,
            pumpManager?.state.connectionState == .connected {
