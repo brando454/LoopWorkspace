@@ -15,17 +15,25 @@ import Foundation
 //   [if signed:]
 //   byte[N..N+3]   timeSinceReset   uint32 LE
 //   byte[N+4..N+23] HMAC-SHA1       20 bytes
-//   byte[-2..-1]  CRC-16 big-endian over all preceding bytes
+//   byte[-2..-1]  CRC-16 little-endian over all preceding bytes (low byte first;
+//                 matches pumpX2 Bytes.calculateCRC16 and the physical pump)
 enum PacketFramer {
 
     // Chunk a serialized message into BLE write payloads.
-    // chunkSize: 40 for CONTROL characteristic, 18 for all others.
+    //
+    // chunkSize is the BODY-byte count per chunk (not the total payload size):
+    // each chunk is [packetsRemaining][transactionId] + up to chunkSize bytes of
+    // the serialized message. This matches pumpX2 Packetize.partitionList, which
+    // partitions packetWithCRC into chunkSize-byte sublists and then prepends the
+    // 2-byte header. Verified against a real pump capture on the AUTHORIZATION
+    // characteristic: 18-byte bodies (defaultChunk = 18).
+    //   defaultChunk = 18  -> 18-byte bodies (auth + status; confirmed on the wire)
+    //   controlChunk = 40  -> 40-byte bodies (CONTROL; pumpX2 working value, not
+    //                         yet validated against a control-path capture)
     static func chunk(serialized: Data, transactionId: UInt8, chunkSize: Int) -> [Data] {
-        let payload = serialized.dropFirst(1) // skip opCode; transactionId is byte[1] in serialized
-        // Re-include opCode in each chunk's cargo
-        let fullPayload = serialized
+        let fullPayload = serialized  // includes opCode; whole serialized message is chunked
 
-        let cargoPerChunk = chunkSize - 2  // 2 header bytes (packetsRemaining + txId)
+        let cargoPerChunk = chunkSize  // chunkSize is the per-chunk body size
         let numChunks = max(1, Int(ceil(Double(fullPayload.count) / Double(cargoPerChunk))))
 
         var chunks: [Data] = []
