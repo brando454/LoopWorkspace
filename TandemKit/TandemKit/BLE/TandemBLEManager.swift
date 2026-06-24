@@ -29,6 +29,14 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
     }
     private var peripheral: CBPeripheral?
     private var peripheralManager: TandemPeripheralManager?
+
+    // Observe-only diagnostic tap, forwarded to the per-connection peripheral
+    // manager when one exists. Defaults to nil; production never sets it. Set
+    // only by the reads-only TandemWireProbeDriver facade for handshake capture.
+    var wireTap: ((WireDirection, Data) -> Void)? {
+        didSet { peripheralManager?.wireTap = wireTap }
+    }
+
     private let logger = Logger(subsystem: "com.loopandlearn.TandemKit", category: "TandemBLEManager")
 
     private var connectCompletion: ((Error?) -> Void)?
@@ -113,6 +121,17 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
 
     // MARK: - Connection management
 
+    // Diagnostic-only entry point for the reads-only wire probe. Drives the
+    // existing scan -> connect -> discover -> EC-JPAKE authenticate path and
+    // then STOPS: it issues no application requests of its own (no status
+    // reads, no delivery commands). It reuses ensureConnected, whose completion
+    // fires via authenticationCompleted() exactly when auth has succeeded, so
+    // the only frames placed on the wire are the handshake that
+    // startAuthentication() drives automatically once services are discovered.
+    func connectAndAuthenticateOnly(completion: @escaping (Error?) -> Void) {
+        ensureConnected(completion)
+    }
+
     // Called by TandemPeripheralManager once EC-JPAKE auth succeeds.
     func authenticationCompleted() {
         guard let completion = connectCompletion else { return }
@@ -171,6 +190,9 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
             pumpManager: pumpManager,
             queue: managerQueue
         )
+        // Propagate the diagnostic observe-only tap to the new connection
+        // (nil in production, so this is inert unless a probe has set it).
+        peripheralManager?.wireTap = wireTap
         peripheral.discoverServices([TandemServiceUUID.tip, TandemServiceUUID.deviceInformation])
     }
 

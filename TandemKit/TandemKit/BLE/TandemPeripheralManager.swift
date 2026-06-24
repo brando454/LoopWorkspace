@@ -3,9 +3,24 @@ import Foundation
 import LoopKit
 import os.log
 
+// Direction of a frame on the wire, for the diagnostic-only `wireTap` seam.
+// Public so the reads-only TandemWireProbeDriver facade can expose the tap
+// across the module boundary; it carries no behavior, so it adds no test risk.
+public enum WireDirection {
+    case outbound
+    case inbound
+}
+
 // Per-connection peripheral delegate.
 // Drives the 4-step initialization, then auth, then handles ongoing requests.
 final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked Sendable {
+
+    // Observe-only diagnostic tap. Defaults to nil so production and every
+    // existing test are completely unaffected: nothing is invoked unless a
+    // caller explicitly sets it. It returns Void and MUST never alter, drop,
+    // filter, or reorder a frame — it is a passive tap, not a filter. Used only
+    // by the reads-only TandemWireProbeDriver to capture handshake frames.
+    var wireTap: ((WireDirection, Data) -> Void)?
 
     private let peripheral: TandemPeripheral
     private weak var bleManager: TandemBLEManager?
@@ -237,6 +252,10 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         }
 
         for chunk in chunks {
+            // Observe-only: emit the exact serialized bytes going on the wire
+            // (opCode/txId/length/cargo/CRC trailer), per chunk. Passive — fires
+            // only when a diagnostic caller has set wireTap; never mutates.
+            wireTap?(.outbound, chunk)
             peripheral.writeValue(chunk, for: char, type: .withResponse)
         }
     }
@@ -268,6 +287,10 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     }
 
     private func receive(data: Data, on uuid: CBUUID) {
+        // Observe-only: emit raw inbound bytes exactly as received, before any
+        // length guard or reassembly. This is the spot where TK-WIRE1 used to
+        // drop the pump's first frame silently. Passive; never mutates or drops.
+        wireTap?(.inbound, data)
         guard data.count >= 2 else { return }
         let packetsRemaining = data[0]
 
