@@ -41,6 +41,16 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
 
     private var connectCompletion: ((Error?) -> Void)?
 
+    // Set when ensureConnected is called before the central has reported
+    // .poweredOn. A freshly built CBCentralManager reports .unknown until
+    // CoreBluetooth asynchronously delivers the first centralManagerDidUpdateState.
+    // Rather than spuriously failing an early caller with .bluetoothNotAvailable,
+    // we stash the request and let centralManagerDidUpdateState start the scan
+    // once power-on arrives. A watchdog fails the request if it never does.
+    private var pendingScanOnPowerOn = false
+    private var powerOnWatchdog: DispatchWorkItem?
+    private let powerOnTimeout: TimeInterval = 5.0
+
     convenience init(pumpManager: TandemPumpManager) {
         self.init(pumpManager: pumpManager, centralFactory: TandemBLEManager.liveCentralFactory)
     }
@@ -134,6 +144,11 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
 
     // Called by TandemPeripheralManager once EC-JPAKE auth succeeds.
     func authenticationCompleted() {
+        // The connection resolved; cancel any power-on watchdog so it cannot
+        // later fail a future request. Harmless if none is armed.
+        pendingScanOnPowerOn = false
+        powerOnWatchdog?.cancel()
+        powerOnWatchdog = nil
         guard let completion = connectCompletion else { return }
         connectCompletion = nil
         completion(nil)
@@ -170,7 +185,24 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
             return
         }
 
-        guard central.state == .poweredOn else {
+        switch central.state {
+        case .poweredOn:
+            break
+        case .unknown, .resetting:
+            // Transient: the central has not finished settling. Defer the scan;
+            // centralManagerDidUpdateState will start it on .poweredOn. The
+            // completion is already stored in connectCompletion above. Arm a
+            // watchdog so a radio that never powers on fails rather than hangs.
+            pendingScanOnPowerOn = true
+            armPowerOnWatchdog()
+            return
+        case .poweredOff, .unauthorized, .unsupported:
+            // Terminal: will not resolve on its own. Fail fast.
+            connectCompletion = nil
+            completion(TandemBLEError.bluetoothNotAvailable)
+            return
+        @unknown default:
+            connectCompletion = nil
             completion(TandemBLEError.bluetoothNotAvailable)
             return
         }
@@ -179,6 +211,31 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
             withServices: [TandemServiceUUID.tip],
             options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
         )
+    }
+
+    // Starts the scan deferred by ensureConnected while the central was settling.
+    private func startDeferredScan() {
+        pendingScanOnPowerOn = false
+        powerOnWatchdog?.cancel()
+        powerOnWatchdog = nil
+        central?.scanForPeripherals(
+            withServices: [TandemServiceUUID.tip],
+            options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
+        )
+    }
+
+    private func armPowerOnWatchdog() {
+        powerOnWatchdog?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.pendingScanOnPowerOn else { return }
+            self.pendingScanOnPowerOn = false
+            self.powerOnWatchdog = nil
+            let completion = self.connectCompletion
+            self.connectCompletion = nil
+            completion?(TandemBLEError.bluetoothNotAvailable)
+        }
+        powerOnWatchdog = work
+        managerQueue.asyncAfter(deadline: .now() + powerOnTimeout, execute: work)
     }
 
     private func handleConnected(_ peripheral: CBPeripheral) {
@@ -204,6 +261,11 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
         if central.state == .poweredOn {
             if let p = peripheral, p.state != .connected {
                 central.connect(p)
+            }
+            // Resume a scan that ensureConnected deferred while the central was
+            // still settling (state .unknown/.resetting at the time of the call).
+            if pendingScanOnPowerOn, peripheral == nil {
+                startDeferredScan()
             }
         }
     }
@@ -256,8 +318,13 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
 
     // MARK: - Helpers
 
-    private func isTandemMobi(name: String, advertisementData: [String: Any]) -> Bool {
-        name == TandemAdvertisedName.mobi || name == TandemAdvertisedName.tslimX2
+    // A Mobi advertises its model name followed by a unit-specific suffix, e.g.
+    // "Tandem Mobi 883". The previous exact-equality match ("Tandem Mobi") never
+    // matched a real unit, so discovery silently dropped every pump. Match by
+    // prefix instead. The FDFB service-UUID scan filter already gates discovery,
+    // so a prefix match is specific enough to never admit an unrelated device.
+    func isTandemMobi(name: String, advertisementData: [String: Any]) -> Bool {
+        name.hasPrefix(TandemAdvertisedName.mobi) || name.hasPrefix(TandemAdvertisedName.tslimX2)
     }
 }
 

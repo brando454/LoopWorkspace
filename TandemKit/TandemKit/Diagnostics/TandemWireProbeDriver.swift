@@ -1,4 +1,5 @@
 import Combine
+import CoreBluetooth
 import Foundation
 
 // Diagnostic-only, READS-ONLY public facade over the (internal) Tandem BLE
@@ -24,7 +25,19 @@ public final class TandemWireProbeDriver: ObservableObject {
 
     public init() {
         let state = TandemPumpState(basalRateSchedule: nil)
-        self.pumpManager = TandemPumpManager(state: state)
+        // Inject a NON-restoring central. The production factory builds its
+        // CBCentralManager with CBCentralManagerOptionRestoreIdentifierKey, which
+        // requires the bluetooth-central background mode AND a willRestoreState
+        // delegate to settle. This bare diagnostic harness implements neither, so
+        // a restoring central churns (state 5<->2, invalid XPC) and never reaches
+        // a stable poweredOn — surfacing as "Bluetooth not available". A plain
+        // central with options:nil is correct for a foreground-only capture tool
+        // and yields byte-identical handshake frames on the wire. Production keeps
+        // its restoring central; this override lives only on the diagnostic path.
+        let nonRestoringFactory: TandemBLEManager.CentralFactory = { delegate, queue in
+            CBCentralManager(delegate: delegate, queue: queue, options: nil)
+        }
+        self.pumpManager = TandemPumpManager(state: state, centralFactory: nonRestoringFactory)
         self.connectionState = pumpManager.state.connectionState
         // The pump manager is an ObservableObject that publishes on state
         // mutation; mirror its connection state onto our own @Published so the
