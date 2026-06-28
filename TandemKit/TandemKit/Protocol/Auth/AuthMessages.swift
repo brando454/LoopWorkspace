@@ -28,6 +28,9 @@ struct Jpake1aResponse: TandemResponse {
     let serverRound1Part1: Data   // 165 bytes
 
     init?(cargo: Data) {
+        // Rebase to a zero-based buffer: `cargo` may be a slice whose startIndex
+        // != 0, in which case the literal subscripts below would trap.
+        let cargo = Data(cargo)
         guard cargo.count >= 167 else { return nil }
         appInstanceId = UInt16(cargo[0]) | (UInt16(cargo[1]) << 8)
         serverRound1Part1 = cargo[2..<167]
@@ -58,6 +61,7 @@ struct Jpake1bResponse: TandemResponse {
     let serverRound1Part2: Data   // 165 bytes
 
     init?(cargo: Data) {
+        let cargo = Data(cargo)
         guard cargo.count >= 167 else { return nil }
         appInstanceId = UInt16(cargo[0]) | (UInt16(cargo[1]) << 8)
         serverRound1Part2 = cargo[2..<167]
@@ -88,6 +92,7 @@ struct Jpake2Response: TandemResponse {
     let serverRound2: Data        // 168 bytes
 
     init?(cargo: Data) {
+        let cargo = Data(cargo)
         guard cargo.count >= 170 else { return nil }
         appInstanceId = UInt16(cargo[0]) | (UInt16(cargo[1]) << 8)
         serverRound2 = cargo[2..<170]
@@ -111,6 +116,7 @@ struct Jpake3SessionKeyResponse: TandemResponse {
     let serverNonce3: Data        // 8 bytes — stored for auth key derivation
 
     init?(cargo: Data) {
+        let cargo = Data(cargo)
         guard cargo.count >= 18 else { return nil }
         appInstanceId = UInt16(cargo[0]) | (UInt16(cargo[1]) << 8)
         serverNonce3 = cargo[2..<10]
@@ -145,6 +151,7 @@ struct Jpake4KeyConfirmationResponse: TandemResponse {
     let serverHashDigest4: Data   // 32 bytes — verify against HMAC-SHA256(data=serverNonce4, key=authKey)
 
     init?(cargo: Data) {
+        let cargo = Data(cargo)
         guard cargo.count >= 50 else { return nil }
         appInstanceId = UInt16(cargo[0]) | (UInt16(cargo[1]) << 8)
         serverNonce4 = cargo[2..<10]

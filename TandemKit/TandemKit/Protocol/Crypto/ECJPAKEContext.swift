@@ -80,6 +80,11 @@ final class ECJPAKEContext {
 
     // Process server's combined round 1 (part1 + part2 concatenated = 330 bytes)
     func readRound1(_ data: Data) throws {
+        // Rebase to a zero-based buffer: an incoming `Data` may be a slice whose
+        // startIndex != 0 (slices retain the parent's index range). `count` is
+        // index-agnostic, so the guard below passes for slices, but the literal
+        // subscripts that follow would read below startIndex and trap.
+        let data = Data(data)
         guard data.count == 330 else { throw ECJPAKEError.invalidServerPoint }
         let (X3p, _) = try decodeAndVerifyChunk(data[0..<165], generator: .generator, peerID: Self.serverID)
         let (X4p, _) = try decodeAndVerifyChunk(data[165..<330], generator: .generator, peerID: Self.serverID)
@@ -105,7 +110,10 @@ final class ECJPAKEContext {
     // Verify server's round 2 (168 bytes = B + ZKP_B) and derive shared secret.
     // Returns 32-byte key material (the x-coordinate of the shared secret point K).
     func processRound2AndDeriveSecret(_ data: Data) throws -> Data {
+        // Rebase any non-zero-based slice to a zero-based buffer before use.
+        let data = Data(data)
         guard let X3 = X3, let X4 = X4 else { throw ECJPAKEError.invalidServerPoint }
+
         // Generator for server round 2: G'' = X1 + X2 + X3
         let X1 = TandemP256Point.generator.multiplied(by: x1)
         let X2 = TandemP256Point.generator.multiplied(by: x2)
