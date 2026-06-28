@@ -33,10 +33,16 @@ enum TandemCharacteristicUUID {
     static let modelNumber      = CBUUID(string: "00002A24-0000-1000-8000-00805F9B34FB")
     static let manufacturerName = CBUUID(string: "00002A29-0000-1000-8000-00805F9B34FB")
 
-    // All characteristics that require notification to be enabled at connect
+    // Characteristics we subscribe to on connect, best-effort. A given pump
+    // model may not expose every one (e.g. the Tandem Mobi does not offer the
+    // GATT Service Changed characteristic on its FDFB service), so this list is
+    // NOT a gate — see TandemPeripheralManager's auth-start gate, which keys on
+    // the AUTHORIZATION characteristic alone. serviceChanged was removed from
+    // this set: it belongs to the Generic Attribute service (1801), which the
+    // pump does not expose under FDFB, so it could never be found here.
     static let allNotifiable: [CBUUID] = [
         currentStatus, qualifyingEvents, historyLog,
-        authorization, control, controlStream, serviceChanged
+        authorization, control, controlStream
     ]
 }
 
