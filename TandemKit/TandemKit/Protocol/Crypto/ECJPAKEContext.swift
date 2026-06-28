@@ -114,13 +114,29 @@ final class ECJPAKEContext {
         let data = Data(data)
         guard let X3 = X3, let X4 = X4 else { throw ECJPAKEError.invalidServerPoint }
 
+        // The server's round-2 payload is prefixed with a 3-byte TLS named-curve
+        // identifier that the round-1 payload does NOT carry: U8(ECCurveType=3,
+        // named_curve) || U16BE(CURVE_ID=23, secp256r1). The reference consumes
+        // these via EcJpake.readRound2 -> readCurveId (CLIENT role only) before
+        // reading the point. We mirror that here: validate and strip the header,
+        // then hand the remaining point+ZKP chunk to decodeAndVerifyChunk, which
+        // expects to start at the U8 point-length prefix. Without this strip the
+        // decoder reads 0x03 as a 3-byte point length and throws invalidServerPoint.
+        guard data.count >= 3,
+              data[data.startIndex] == 0x03,
+              data[data.index(data.startIndex, offsetBy: 1)] == 0x00,
+              data[data.index(data.startIndex, offsetBy: 2)] == 0x17 else {
+            throw ECJPAKEError.invalidServerPoint
+        }
+        let chunk = Data(data[data.index(data.startIndex, offsetBy: 3)...])
+
         // Generator for server round 2: G'' = X1 + X2 + X3
         let X1 = TandemP256Point.generator.multiplied(by: x1)
         let X2 = TandemP256Point.generator.multiplied(by: x2)
         let Gprime2 = X1.adding(X2).adding(X3)
 
         // Decode B (server's key share). Server may use different signerID length → just grab point+zkp
-        let (B, _) = try decodeAndVerifyChunk(data, generator: Gprime2, peerID: Self.serverID)
+        let (B, _) = try decodeAndVerifyChunk(chunk, generator: Gprime2, peerID: Self.serverID)
 
         // K = (B - X4 * x2 * password) * x2
         let x2s  = Fq(w: modQ(mul256(x2.w, password.w)))
