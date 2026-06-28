@@ -3,24 +3,27 @@ import Foundation
 import LoopKit
 import os.log
 
-// Direction of a frame on the wire, for the diagnostic-only `wireTap` seam.
-// Public so the reads-only TandemWireProbeDriver facade can expose the tap
-// across the module boundary; it carries no behavior, so it adds no test risk.
+#if DEBUG
+// Direction of a frame on the wire, for the DEBUG-only `wireTap` diagnostic
+// seam consumed by TandemWireProbeDriver. Gated out of release builds entirely.
 public enum WireDirection {
     case outbound
     case inbound
 }
+#endif
 
 // Per-connection peripheral delegate.
 // Drives the 4-step initialization, then auth, then handles ongoing requests.
 final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked Sendable {
 
-    // Observe-only diagnostic tap. Defaults to nil so production and every
-    // existing test are completely unaffected: nothing is invoked unless a
+    #if DEBUG
+    // Observe-only DEBUG-only diagnostic tap, gated out of release builds.
+    // Defaults to nil so every test is unaffected: nothing is invoked unless a
     // caller explicitly sets it. It returns Void and MUST never alter, drop,
     // filter, or reorder a frame — it is a passive tap, not a filter. Used only
     // by the reads-only TandemWireProbeDriver to capture handshake frames.
     var wireTap: ((WireDirection, Data) -> Void)?
+    #endif
 
     private let peripheral: TandemPeripheral
     private weak var bleManager: TandemBLEManager?
@@ -65,6 +68,16 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
 
     private let txID = TransactionID()
     private var authState: TandemAuthState?
+
+    // Auth-response serialization. CoreBluetooth callbacks arrive ordered on
+    // `queue`, but the old per-response `Task` hop discarded that ordering and
+    // raced concurrent handlers against the shared `authState`, intermittently
+    // halting the handshake after RX 0x23. A single long-lived consumer Task
+    // drains this stream and processes each response to completion — including
+    // the `await send` of the follow-up — before pulling the next, restoring
+    // strict arrival-order, one-at-a-time handling across suspension points.
+    private var authResponseContinuation: AsyncStream<(UInt8, Data)>.Continuation?
+    private var authConsumerTask: Task<Void, Never>?
 
     // Initialization gate: auth starts when both flags are true.
     private var servicesDiscovered = false
@@ -133,12 +146,20 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     func cleanup() {
         peripheral.delegate = nil
         pending.failAll(error: TandemBLEError.notConnected)
+        authResponseContinuation?.finish()
+        authResponseContinuation = nil
+        authConsumerTask?.cancel()
+        authConsumerTask = nil
     }
 
     // MARK: - CBPeripheralDelegate
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard error == nil else { logger.error("Service discovery failed: \(error!)"); return }
+        #if DEBUG
+        // DEBUG-only diagnostics: which services did the pump expose?
+        logger.info("DIAG services: \((peripheral.services ?? []).map { $0.uuid.uuidString }.joined(separator: ", "))")
+        #endif
         peripheral.services?.forEach { service in
             peripheral.discoverCharacteristics(nil, for: service)
         }
@@ -149,9 +170,19 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         service.characteristics?.forEach { char in
             characteristics[char.uuid] = char
         }
+        #if DEBUG
+        // DEBUG-only diagnostics: which characteristics under this service?
+        logger.info("DIAG chars for \(service.uuid.uuidString): \((service.characteristics ?? []).map { $0.uuid.uuidString }.joined(separator: ", "))")
+        #endif
 
         // Once TIP service characteristics are found, enable notifications and request MTU
         if service.uuid == TandemServiceUUID.tip {
+            #if DEBUG
+            // DEBUG-only diagnostics: how many of allNotifiable are present?
+            let present = TandemCharacteristicUUID.allNotifiable.filter { characteristics[$0] != nil }
+            let missing = TandemCharacteristicUUID.allNotifiable.filter { characteristics[$0] == nil }
+            logger.info("DIAG notifiable present \(present.count)/\(TandemCharacteristicUUID.allNotifiable.count); missing: \(missing.map { $0.uuidString }.joined(separator: ", "))")
+            #endif
             TandemCharacteristicUUID.allNotifiable.forEach { uuid in
                 if let char = characteristics[uuid] {
                     peripheral.setNotifyValue(true, for: char)
@@ -166,9 +197,28 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        #if DEBUG
+        // DEBUG-only diagnostics: log every subscription result, including failures.
+        if let error = error {
+            logger.error("DIAG notify FAILED \(characteristic.uuid.uuidString): \(error.localizedDescription)")
+        } else {
+            logger.info("DIAG notify ok \(characteristic.uuid.uuidString) isNotifying=\(characteristic.isNotifying)")
+        }
+        #endif
         guard error == nil, characteristic.isNotifying else { return }
         notificationsSubscribed += 1
-        if notificationsSubscribed >= TandemCharacteristicUUID.allNotifiable.count {
+        #if DEBUG
+        logger.info("DIAG notify count \(self.notificationsSubscribed)/\(TandemCharacteristicUUID.allNotifiable.count)")
+        #endif
+        // Gate auth on the AUTHORIZATION characteristic alone. The EC-JPAKE
+        // handshake is self-contained on AUTHORIZATION (7B83FFF9): startAuthentication
+        // writes the first request there and dispatchResponse drives every
+        // subsequent step from inbound AUTHORIZATION frames, never reading any
+        // other characteristic. The remaining subscriptions (status/control)
+        // are needed later but must not block the handshake — counting the full
+        // set stalled forever when the pump exposed fewer characteristics than
+        // the list assumed.
+        if characteristic.uuid == TandemCharacteristicUUID.authorization {
             notificationsEnabled = true
             checkInitializationComplete()
         }
@@ -198,19 +248,72 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         guard let pm = pumpManager else { return }
         pm.updateState { $0.connectionState = .authenticating }
 
-        authState = TandemAuthState(
+        let authState = TandemAuthState(
             pairingCode: pm.state.pairingCode,
             derivedSecretHex: pm.state.derivedSecretHex,
             serverNonce3Hex: pm.state.serverNonce3Hex
         )
+        self.authState = authState
 
-        Task { [weak self] in
+        // Tear down any prior handshake's consumer before starting a new one so a
+        // reconnect mid-handshake cannot leave a stale consumer racing the new one.
+        authConsumerTask?.cancel()
+        authResponseContinuation?.finish()
+
+        let stream = AsyncStream<(UInt8, Data)> { continuation in
+            self.authResponseContinuation = continuation
+        }
+
+        // Single serialized consumer. Captures `authState` once (no per-response
+        // optional read that could observe nil mid-handshake) and processes the
+        // begin() request plus every response in strict order, one at a time.
+        authConsumerTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let firstRequest = try self.authState!.begin()
+                let firstRequest = try authState.begin()
                 try await self.send(firstRequest)
             } catch {
+                #if DEBUG
+                self.wireTap?(.inbound, Data("DIAG-AUTH-BEGIN-ERROR: \(error)".utf8))
+                #endif
                 self.logger.error("Auth failed: \(error)")
+                return
+            }
+
+            for await (opCode, cargo) in stream {
+                if Task.isCancelled { break }
+                #if DEBUG
+                // DEBUG-only diagnostics: dispatch entry trace in the serialized consumer.
+                self.wireTap?(.inbound, Data("DIAG-DISPATCH-ENTER: op=\(String(format: "0x%02X", opCode)) state=\(authState.state)".utf8))
+                #endif
+                do {
+                    if let nextRequest = try authState.handleResponse(opCode: opCode, cargo: cargo) {
+                        #if DEBUG
+                        self.wireTap?(.inbound, Data("DIAG-DISPATCH-NEXT: next=\(String(format: "0x%02X", type(of: nextRequest).opCode))".utf8))
+                        #endif
+                        try await self.send(nextRequest)
+                    } else {
+                        #if DEBUG
+                        self.wireTap?(.inbound, Data("DIAG-DISPATCH-NIL: state=\(authState.state)".utf8))
+                        #endif
+                        if case .authenticated = authState.state {
+                            self.pumpManager?.updateState {
+                                $0.authKey = authState.authKey
+                                $0.derivedSecretHex = authState.derivedSecretHex
+                                $0.serverNonce3Hex = authState.serverNonce3Hex
+                                $0.connectionState = .connected
+                            }
+                            self.bleManager?.authenticationCompleted()
+                            break
+                        }
+                    }
+                } catch {
+                    #if DEBUG
+                    self.wireTap?(.inbound, Data("DIAG-AUTH-RESP-ERROR: op=\(opCode) \(error)".utf8))
+                    #endif
+                    self.logger.error("Auth response error: \(error)")
+                    break
+                }
             }
         }
     }
@@ -255,7 +358,9 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
             // Observe-only: emit the exact serialized bytes going on the wire
             // (opCode/txId/length/cargo/CRC trailer), per chunk. Passive — fires
             // only when a diagnostic caller has set wireTap; never mutates.
+            #if DEBUG
             wireTap?(.outbound, chunk)
+            #endif
             peripheral.writeValue(chunk, for: char, type: .withResponse)
         }
     }
@@ -290,7 +395,9 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         // Observe-only: emit raw inbound bytes exactly as received, before any
         // length guard or reassembly. This is the spot where TK-WIRE1 used to
         // drop the pump's first frame silently. Passive; never mutates or drops.
+        #if DEBUG
         wireTap?(.inbound, data)
+        #endif
         guard data.count >= 2 else { return }
         let packetsRemaining = data[0]
 
@@ -300,8 +407,34 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
             var buffer = receiveBuffers[uuid] ?? []
             defer { receiveBuffers[uuid] = nil }
 
-            guard let assembled = try? PacketFramer.reassemble(chunks: &buffer),
-                  assembled.count >= 3 else { return }
+            // Reassemble the per-characteristic chunk buffer into a full frame.
+            // The DEBUG-only traces below surface the three failure outcomes
+            // (nil / throw / too-short) that a bare `try?` would have swallowed;
+            // the surrounding control flow is unconditional in every build.
+            let assembled: Data
+            do {
+                guard let result = try PacketFramer.reassemble(chunks: &buffer) else {
+                    #if DEBUG
+                    wireTap?(.inbound, Data("DIAG-REASM-NIL: reassemble returned nil".utf8))
+                    #endif
+                    return
+                }
+                assembled = result
+            } catch {
+                #if DEBUG
+                wireTap?(.inbound, Data("DIAG-REASM-ERROR: \(error)".utf8))
+                #endif
+                return
+            }
+            guard assembled.count >= 3 else {
+                #if DEBUG
+                wireTap?(.inbound, Data("DIAG-REASM-SHORT: \(assembled.count)B".utf8))
+                #endif
+                return
+            }
+            #if DEBUG
+            wireTap?(.inbound, Data("DIAG-REASM-OK: op=\(String(format: "0x%02X", assembled[0])) len=\(assembled.count)".utf8))
+            #endif
 
             let opCode = assembled[0]
             let cargo = assembled.count > 3 ? assembled[3...] : Data()
@@ -313,24 +446,17 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     private func dispatchResponse(opCode: UInt8, cargo: Data, on uuid: CBUUID) {
         // Check if this is an auth response
         if uuid == TandemCharacteristicUUID.authorization {
-            Task { [weak self] in
-                guard let self, let authState = self.authState else { return }
-                do {
-                    if let nextRequest = try authState.handleResponse(opCode: opCode, cargo: cargo) {
-                        try await self.send(nextRequest)
-                    } else if case .authenticated = authState.state {
-                        self.pumpManager?.updateState {
-                            $0.authKey = authState.authKey
-                            $0.derivedSecretHex = authState.derivedSecretHex
-                            $0.serverNonce3Hex = authState.serverNonce3Hex
-                            $0.connectionState = .connected
-                        }
-                        self.bleManager?.authenticationCompleted()
-                    }
-                } catch {
-                    self.logger.error("Auth response error: \(error)")
-                }
-            }
+            // Hand the auth response to the single-consumer AsyncStream. The
+            // yield itself is unconditional in every build; the DEBUG-only trace
+            // records whether the continuation was live and whether the buffered
+            // item was accepted, which is how the 0x23 delivery halt was found.
+            #if DEBUG
+            let hadCont = authResponseContinuation != nil
+            let r = authResponseContinuation?.yield((opCode, cargo))
+            wireTap?(.inbound, Data("DIAG-YIELD: op=\(String(format: "0x%02X", opCode)) cont=\(hadCont) result=\(String(describing: r))".utf8))
+            #else
+            authResponseContinuation?.yield((opCode, cargo))
+            #endif
             return
         }
 

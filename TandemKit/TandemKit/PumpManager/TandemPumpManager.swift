@@ -106,6 +106,7 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
 
     // MARK: - Diagnostics (reads-only wire probe)
     //
+    #if DEBUG
     // Internal plumbing for the TandemWireProbeDriver facade only. The wireTap
     // is an observe-only frame tap (nil in production); startDiagnosticHandshake
     // drives connect + EC-JPAKE auth then stops, issuing no delivery commands.
@@ -113,6 +114,7 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
     var wireTap: ((WireDirection, Data) -> Void)? {
         didSet { bleManager?.wireTap = wireTap }
     }
+    #endif
 
     func startDiagnosticHandshake(completion: @escaping (Error?) -> Void) {
         bleManager?.connectAndAuthenticateOnly(completion: completion)

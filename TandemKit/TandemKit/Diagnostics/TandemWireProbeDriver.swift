@@ -2,6 +2,7 @@ import Combine
 import CoreBluetooth
 import Foundation
 
+#if DEBUG
 // Diagnostic-only, READS-ONLY public facade over the (internal) Tandem BLE
 // stack. It exists solely to let a separate app module capture the EC-JPAKE
 // pairing handshake against a spare pump for protocol validation.
@@ -71,3 +72,4 @@ public final class TandemWireProbeDriver: ObservableObject {
         connectionState == .connected
     }
 }
+#endif

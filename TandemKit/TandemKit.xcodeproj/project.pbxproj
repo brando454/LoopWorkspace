@@ -7,18 +7,24 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00930BC9ACDF15E5D5371421 /* TandemKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 96D7D617AC083C7ABCBB8FED /* TandemKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		021094432644857AEB626377 /* CRC16Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19DB2695FF11872F61F459D3 /* CRC16Tests.swift */; };
 		02C64791EC05FBD914CC9FA2 /* TandemUICoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 763734450F496AA96BEABD2B /* TandemUICoordinator.swift */; };
 		05DC353EAF0ACA2A37694062 /* LoopKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1876680BCF0BBB17E208152E /* LoopKit.framework */; };
 		06CB1705D185FC8EE94893ED /* TandemSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5710A3A772E8281CE6850991 /* TandemSettingsView.swift */; };
 		06D01191E48E4E29FE31788B /* CRC16.swift in Sources */ = {isa = PBXBuildFile; fileRef = 982A01ACFFA977E3E16B386E /* CRC16.swift */; };
+		09E0F1BD6CC5CE422DC882E2 /* TandemAdvertisedNameMatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 932A44D1AC8AC01D375606D0 /* TandemAdvertisedNameMatchTests.swift */; };
 		0D84A0FAC46CC926938B93A7 /* TandemKitPumpManager+UI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9998CF494701E93D37FF3413 /* TandemKitPumpManager+UI.swift */; };
 		0F4837BBC7C976513AC82811 /* TandemKDFConfirmationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C49F1262107DC7DB2EDB3000 /* TandemKDFConfirmationTests.swift */; };
 		117B3FDF6D2062B2EC703874 /* LastBolusStatusMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4BDD71E4CC4B3C1933476C7 /* LastBolusStatusMessages.swift */; };
+		169914A0179AA08612163778 /* WireCaptureModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F8F05C41C9E11A908FA571 /* WireCaptureModel.swift */; };
 		19C80E00AF1D9426681F5482 /* PendingResponseTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7947F86E48A076358AC55AB /* PendingResponseTable.swift */; };
 		28C3AF67FA9DC4CBFCD2C428 /* BLEConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260A10066C1DFD0AD86BF887 /* BLEConstants.swift */; };
 		2F275772064B255DADAA522A /* TandemBasalScheduleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0499F5E89630143C0D6D0933 /* TandemBasalScheduleTests.swift */; };
+		31B5226BB4DF66943F3DBA6E /* TandemKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96D7D617AC083C7ABCBB8FED /* TandemKit.framework */; };
 		32B7531DAEADC8844F475C48 /* PacketFramer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BF6CC38058B0C112393CEA6 /* PacketFramer.swift */; };
+		34C77B8605392B3A5EC2D763 /* LoopKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 1876680BCF0BBB17E208152E /* LoopKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		3E0BB7FAF3D2DDC566CC818C /* LoopKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1876680BCF0BBB17E208152E /* LoopKit.framework */; };
 		3F7B3C4EDE35A0FFC98C7CF9 /* TandemPumpManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ED9ED6F07EBD3AE3056F9C3 /* TandemPumpManager.swift */; };
 		43D6AF212B52F86D7331DAE5 /* TandemKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96D7D617AC083C7ABCBB8FED /* TandemKit.framework */; };
 		45D21CF96C066F5F932B9812 /* TandemKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 96D7D617AC083C7ABCBB8FED /* TandemKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -32,6 +38,7 @@
 		58FE5537D6E6A4790939D567 /* StatusMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD3003CFEB8118A810634AA5 /* StatusMessages.swift */; };
 		5ED1C754407408BAD2BB7CE0 /* ECJPAKEZKPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3B1B5602EC706CC28E6EBAA /* ECJPAKEZKPTests.swift */; };
 		6DDA48EE66A1CC10D5A0621B /* TransactionID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2809D5F80CA0BC1CB2935A83 /* TransactionID.swift */; };
+		738096725DAE8584B85A3B24 /* TandemWireProbeDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A96B6E23EAC9209EF1E64A9 /* TandemWireProbeDriver.swift */; };
 		73C84B897842369F89F8E4B2 /* P256Arithmetic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98B17486A139FF260AE96644 /* P256Arithmetic.swift */; };
 		73F8F941117F8120893BB057 /* AuthMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = B64545F8C6FF45AB42F9031A /* AuthMessages.swift */; };
 		7739B6697215074F6836084D /* TandemDoseReporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9705132EC8A390B413F14096 /* TandemDoseReporterTests.swift */; };
@@ -40,7 +47,9 @@
 		8086C18BFB33C92B2C6892E2 /* TandemPumpManagerReportingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7561E6B79BC249E8B8E21C54 /* TandemPumpManagerReportingTests.swift */; };
 		80AF39E007D4097935428ADC /* LoopKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1876680BCF0BBB17E208152E /* LoopKit.framework */; };
 		894C8B3992DDA843F93F6032 /* TandemDoseReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36ED4FB49CE70AD0E751D41B /* TandemDoseReporter.swift */; };
+		902DE1AADD24778BB3B8106A /* ECJPAKERound2CurveIdTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB58B92D8C565401E33AE332 /* ECJPAKERound2CurveIdTests.swift */; };
 		90FD65DCCC22AAA11437DAE8 /* TempRateMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = B740882F65C069639AFBEA3B /* TempRateMessages.swift */; };
+		921D78C8DD60DE389624EA70 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0AC46C3DC5DA7C3288B37A3 /* ContentView.swift */; };
 		927A31316CE10AEAC8FB8CEF /* BolusMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5622D39ED2D371239A58D35 /* BolusMessages.swift */; };
 		942E56461BEF98C08C39D509 /* MobiHandshakeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADE233B92C71A461D1EB3B66 /* MobiHandshakeTests.swift */; };
 		95E7D60054E208B9C526D138 /* TandemTempRateCeilingIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 304EA24E4D4D5652C6D6EB6B /* TandemTempRateCeilingIntegrationTests.swift */; };
@@ -50,7 +59,9 @@
 		A0AF4F7EC90B1371C0F0786D /* TandemAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD325085E3D9918C9A7C36A /* TandemAuthState.swift */; };
 		A39E21506DFF1C7E40F21A4C /* TandemPumpStatePersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D33FAD7B59D3985846872921 /* TandemPumpStatePersistenceTests.swift */; };
 		A824C603F836A76F1EE607EF /* TandemKitUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 465DD9932830FE70048656E1 /* TandemKitUI.swift */; };
+		AC629BEC3848F04C51E9B8A2 /* PacketFramerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F7D6FEF165CCE65685E2C0F /* PacketFramerTests.swift */; };
 		B47BB24921661BADBC781690 /* TandemKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96D7D617AC083C7ABCBB8FED /* TandemKit.framework */; };
+		B663B05C1125674C6040606F /* ECJPAKESliceSafetyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA6120133BB417A9A6F8CF33 /* ECJPAKESliceSafetyTests.swift */; };
 		B74F5B4231B71C07737522EB /* TandemPairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F98CEF2CEE63EEEBA70953 /* TandemPairingView.swift */; };
 		BBEA470F1967B56271DF92A8 /* TandemBolusGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 297CBFD17E71E3449EE4E0B6 /* TandemBolusGuardTests.swift */; };
 		BC3DEBE72200FFEEEA9B1270 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = DE3128613CD96F34670A8484 /* README.md */; };
@@ -59,6 +70,7 @@
 		C222DDD1A3CF1666A2FD407C /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDB32DFE119408889BAB63DC /* Message.swift */; };
 		D0031FD9B5E6590E8A52BA28 /* HKDF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870C47D6B84EE67C1C31AE11 /* HKDF.swift */; };
 		E1BAA62AD9AB624D29CE8027 /* TandemKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96D7D617AC083C7ABCBB8FED /* TandemKit.framework */; };
+		E8BB3DD42A7E9A89A2AF835F /* TandemWireProbeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A955154F38FA4E9F6E518482 /* TandemWireProbeApp.swift */; };
 		EA77E3FB8D7F2BC625B7AA11 /* HmacUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545E159EE3A36704DAEF06ED /* HmacUtils.swift */; };
 		FC43335D923E11050AC0950C /* LoopKitUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BAD2582738CDACA494F422CD /* LoopKitUI.framework */; };
 		FC8DE4449A520348A75B9288 /* TandemConnectingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C7350E1640330A677C9DEE5 /* TandemConnectingView.swift */; };
@@ -66,6 +78,20 @@
 
 /* Begin PBXContainerItemProxy section */
 		05C8BD53FE9652DE0E26511C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BC0A02448C590E596C1B56DD /* LoopKit */;
+			proxyType = 1;
+			remoteGlobalIDString = 43D8FDCA1C728FDF0073BE78;
+			remoteInfo = LoopKit;
+		};
+		0B8BF748E2D0400FBCE366E2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 81B21D8A9D8F284AAD5E0E39 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3DAA8593AE6A736056447397;
+			remoteInfo = TandemKit;
+		};
+		177F9C8FA5C92729DDA8AA18 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BC0A02448C590E596C1B56DD /* LoopKit */;
 			proxyType = 1;
@@ -138,6 +164,18 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		2B1399466A9E3305D70C4C18 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				00930BC9ACDF15E5D5371421 /* TandemKit.framework in Embed Frameworks */,
+				34C77B8605392B3A5EC2D763 /* LoopKit.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		4F7F978DECF7D96750AC1255 /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -153,7 +191,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00F8F05C41C9E11A908FA571 /* WireCaptureModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireCaptureModel.swift; sourceTree = "<group>"; };
 		0499F5E89630143C0D6D0933 /* TandemBasalScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemBasalScheduleTests.swift; sourceTree = "<group>"; };
+		0F7D6FEF165CCE65685E2C0F /* PacketFramerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketFramerTests.swift; sourceTree = "<group>"; };
 		19DB2695FF11872F61F459D3 /* CRC16Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CRC16Tests.swift; sourceTree = "<group>"; };
 		1BD325085E3D9918C9A7C36A /* TandemAuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemAuthState.swift; sourceTree = "<group>"; };
 		1BF6CC38058B0C112393CEA6 /* PacketFramer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketFramer.swift; sourceTree = "<group>"; };
@@ -171,6 +211,7 @@
 		49E1DCAF32E27C38851EB360 /* TandemKitPlugin.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TandemKitPlugin.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		545E159EE3A36704DAEF06ED /* HmacUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HmacUtils.swift; sourceTree = "<group>"; };
 		5710A3A772E8281CE6850991 /* TandemSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemSettingsView.swift; sourceTree = "<group>"; };
+		5A96B6E23EAC9209EF1E64A9 /* TandemWireProbeDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemWireProbeDriver.swift; sourceTree = "<group>"; };
 		6381781F07D2C6731F3A1F3E /* TandemKitPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemKitPlugin.swift; sourceTree = "<group>"; };
 		6470F77570F07F4657765275 /* TandemPumpState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemPumpState.swift; sourceTree = "<group>"; };
 		7561E6B79BC249E8B8E21C54 /* TandemPumpManagerReportingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemPumpManagerReportingTests.swift; sourceTree = "<group>"; };
@@ -178,16 +219,20 @@
 		7FE65FD81929E56351F1CC9E /* TandemPeripheralManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemPeripheralManager.swift; sourceTree = "<group>"; };
 		8103CDA5C4FE666DA5C0AB72 /* TandemBolusReleaseIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemBolusReleaseIntegrationTests.swift; sourceTree = "<group>"; };
 		870C47D6B84EE67C1C31AE11 /* HKDF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HKDF.swift; sourceTree = "<group>"; };
+		8959C3ACD79DCD6CF2A3A675 /* TandemWireProbe.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TandemWireProbe.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8C7350E1640330A677C9DEE5 /* TandemConnectingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemConnectingView.swift; sourceTree = "<group>"; };
 		8FA0D7BDB9DA4B8AD8971284 /* TandemBLEManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemBLEManager.swift; sourceTree = "<group>"; };
+		932A44D1AC8AC01D375606D0 /* TandemAdvertisedNameMatchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemAdvertisedNameMatchTests.swift; sourceTree = "<group>"; };
 		96D7D617AC083C7ABCBB8FED /* TandemKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TandemKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		9705132EC8A390B413F14096 /* TandemDoseReporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemDoseReporterTests.swift; sourceTree = "<group>"; };
 		982A01ACFFA977E3E16B386E /* CRC16.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CRC16.swift; sourceTree = "<group>"; };
 		9861EC9E10F853CD784AD02A /* TandemKitUI.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TandemKitUI.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		98B17486A139FF260AE96644 /* P256Arithmetic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = P256Arithmetic.swift; sourceTree = "<group>"; };
 		9998CF494701E93D37FF3413 /* TandemKitPumpManager+UI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TandemKitPumpManager+UI.swift"; sourceTree = "<group>"; };
+		9C2498CA5DE9535CE8C32FFD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		9C65596031A7A41489BF4D31 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A5622D39ED2D371239A58D35 /* BolusMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BolusMessages.swift; sourceTree = "<group>"; };
+		A955154F38FA4E9F6E518482 /* TandemWireProbeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemWireProbeApp.swift; sourceTree = "<group>"; };
 		A9F15CAA9EF8E5F289E45586 /* PendingResponseTableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingResponseTableTests.swift; sourceTree = "<group>"; };
 		ADE233B92C71A461D1EB3B66 /* MobiHandshakeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobiHandshakeTests.swift; sourceTree = "<group>"; };
 		B179AE7EDD0F37FF4B2559A9 /* TandemKitTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TandemKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -199,10 +244,13 @@
 		C240D0E5F6E5D9BC3A3DD9AB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		C3B1B5602EC706CC28E6EBAA /* ECJPAKEZKPTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ECJPAKEZKPTests.swift; sourceTree = "<group>"; };
 		C49F1262107DC7DB2EDB3000 /* TandemKDFConfirmationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemKDFConfirmationTests.swift; sourceTree = "<group>"; };
+		CB58B92D8C565401E33AE332 /* ECJPAKERound2CurveIdTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ECJPAKERound2CurveIdTests.swift; sourceTree = "<group>"; };
 		CDB32DFE119408889BAB63DC /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
 		D33FAD7B59D3985846872921 /* TandemPumpStatePersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemPumpStatePersistenceTests.swift; sourceTree = "<group>"; };
 		D7947F86E48A076358AC55AB /* PendingResponseTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingResponseTable.swift; sourceTree = "<group>"; };
+		DA6120133BB417A9A6F8CF33 /* ECJPAKESliceSafetyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ECJPAKESliceSafetyTests.swift; sourceTree = "<group>"; };
 		DE3128613CD96F34670A8484 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		E0AC46C3DC5DA7C3288B37A3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		E57E0FFF6471B896D7987746 /* TandemMessageVectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemMessageVectorTests.swift; sourceTree = "<group>"; };
 		FA696B2EA7F0D585F0489D5E /* TandemPeripheral.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemPeripheral.swift; sourceTree = "<group>"; };
 		FD3003CFEB8118A810634AA5 /* StatusMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusMessages.swift; sourceTree = "<group>"; };
@@ -223,6 +271,15 @@
 			files = (
 				B47BB24921661BADBC781690 /* TandemKit.framework in Frameworks */,
 				C01A8ED2A9EAD31E539E5A55 /* TandemKitUI.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		97BA0608CF410F5127B64118 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				31B5226BB4DF66943F3DBA6E /* TandemKit.framework in Frameworks */,
+				3E0BB7FAF3D2DDC566CC818C /* LoopKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -269,6 +326,17 @@
 			path = Auth;
 			sourceTree = "<group>";
 		};
+		27AE480C399C909CAE4F0A8B /* TandemWireProbe */ = {
+			isa = PBXGroup;
+			children = (
+				E0AC46C3DC5DA7C3288B37A3 /* ContentView.swift */,
+				9C2498CA5DE9535CE8C32FFD /* Info.plist */,
+				A955154F38FA4E9F6E518482 /* TandemWireProbeApp.swift */,
+				00F8F05C41C9E11A908FA571 /* WireCaptureModel.swift */,
+			);
+			path = TandemWireProbe;
+			sourceTree = "<group>";
+		};
 		32BECAFAEE84BB1C2EE1B5FF /* Projects */ = {
 			isa = PBXGroup;
 			children = (
@@ -286,6 +354,14 @@
 			path = Framing;
 			sourceTree = "<group>";
 		};
+		6D861677242AAE016D96BCB7 /* Diagnostics */ = {
+			isa = PBXGroup;
+			children = (
+				5A96B6E23EAC9209EF1E64A9 /* TandemWireProbeDriver.swift */,
+			);
+			path = Diagnostics;
+			sourceTree = "<group>";
+		};
 		7AC5A64C6E0F37CA4AB10B4D /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -293,6 +369,7 @@
 				49E1DCAF32E27C38851EB360 /* TandemKitPlugin.framework */,
 				B179AE7EDD0F37FF4B2559A9 /* TandemKitTests.xctest */,
 				9861EC9E10F853CD784AD02A /* TandemKitUI.framework */,
+				8959C3ACD79DCD6CF2A3A675 /* TandemWireProbe.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -333,6 +410,7 @@
 				961D0B3BA2A4C15EE33EFCDD /* TandemKitPlugin */,
 				AE5B0F7394C191D7D7EE3A87 /* TandemKitTests */,
 				BDA9F0DAE103C620FC178DA3 /* TandemKitUI */,
+				27AE480C399C909CAE4F0A8B /* TandemWireProbe */,
 				7AC5A64C6E0F37CA4AB10B4D /* Products */,
 				32BECAFAEE84BB1C2EE1B5FF /* Projects */,
 			);
@@ -352,10 +430,14 @@
 			isa = PBXGroup;
 			children = (
 				19DB2695FF11872F61F459D3 /* CRC16Tests.swift */,
+				CB58B92D8C565401E33AE332 /* ECJPAKERound2CurveIdTests.swift */,
+				DA6120133BB417A9A6F8CF33 /* ECJPAKESliceSafetyTests.swift */,
 				C3B1B5602EC706CC28E6EBAA /* ECJPAKEZKPTests.swift */,
 				ADE233B92C71A461D1EB3B66 /* MobiHandshakeTests.swift */,
+				0F7D6FEF165CCE65685E2C0F /* PacketFramerTests.swift */,
 				A9F15CAA9EF8E5F289E45586 /* PendingResponseTableTests.swift */,
 				DE3128613CD96F34670A8484 /* README.md */,
+				932A44D1AC8AC01D375606D0 /* TandemAdvertisedNameMatchTests.swift */,
 				0499F5E89630143C0D6D0933 /* TandemBasalScheduleTests.swift */,
 				297CBFD17E71E3449EE4E0B6 /* TandemBolusGuardTests.swift */,
 				8103CDA5C4FE666DA5C0AB72 /* TandemBolusReleaseIntegrationTests.swift */,
@@ -374,6 +456,7 @@
 			isa = PBXGroup;
 			children = (
 				1AABF8CDE95A226F8999B55C /* BLE */,
+				6D861677242AAE016D96BCB7 /* Diagnostics */,
 				864CDA0803D6D2CBE513C7FC /* Protocol */,
 				E6F72D60E8487520EA69826D /* PumpManager */,
 				C240D0E5F6E5D9BC3A3DD9AB /* Info.plist */,
@@ -479,6 +562,27 @@
 			productReference = 9861EC9E10F853CD784AD02A /* TandemKitUI.framework */;
 			productType = "com.apple.product-type.framework";
 		};
+		8D46BDB5D44A01DC7AFC3B25 /* TandemWireProbe */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 197F5C234F55F38BA0396238 /* Build configuration list for PBXNativeTarget "TandemWireProbe" */;
+			buildPhases = (
+				52CB6373694845FA8004B719 /* Sources */,
+				97BA0608CF410F5127B64118 /* Frameworks */,
+				2B1399466A9E3305D70C4C18 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				37FE23480DD61EFEE2D4B7B2 /* PBXTargetDependency */,
+				04020BDADB105CA46253FB3E /* PBXTargetDependency */,
+			);
+			name = TandemWireProbe;
+			packageProductDependencies = (
+			);
+			productName = TandemWireProbe;
+			productReference = 8959C3ACD79DCD6CF2A3A675 /* TandemWireProbe.app */;
+			productType = "com.apple.product-type.application";
+		};
 		B558227FB03818C04D442623 /* TandemKitPlugin */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 16D4D7E6D68B0788CE5E11CD /* Build configuration list for PBXNativeTarget "TandemKitPlugin" */;
@@ -556,6 +660,7 @@
 				B558227FB03818C04D442623 /* TandemKitPlugin */,
 				B7D25612D4F293BEF48C278E /* TandemKitTests */,
 				652B5AFF6E46160DF6B39F67 /* TandemKitUI */,
+				8D46BDB5D44A01DC7AFC3B25 /* TandemWireProbe */,
 			);
 		};
 /* End PBXProject section */
@@ -597,6 +702,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		52CB6373694845FA8004B719 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				921D78C8DD60DE389624EA70 /* ContentView.swift in Sources */,
+				E8BB3DD42A7E9A89A2AF835F /* TandemWireProbeApp.swift in Sources */,
+				169914A0179AA08612163778 /* WireCaptureModel.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		785A5ACCBD8907202895BC1F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -622,6 +737,7 @@
 				4D04886572D178AAE9C6E756 /* TandemPeripheralManager.swift in Sources */,
 				3F7B3C4EDE35A0FFC98C7CF9 /* TandemPumpManager.swift in Sources */,
 				4B5F2F691F460C35788C921F /* TandemPumpState.swift in Sources */,
+				738096725DAE8584B85A3B24 /* TandemWireProbeDriver.swift in Sources */,
 				90FD65DCCC22AAA11437DAE8 /* TempRateMessages.swift in Sources */,
 				6DDA48EE66A1CC10D5A0621B /* TransactionID.swift in Sources */,
 			);
@@ -645,9 +761,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				021094432644857AEB626377 /* CRC16Tests.swift in Sources */,
+				902DE1AADD24778BB3B8106A /* ECJPAKERound2CurveIdTests.swift in Sources */,
+				B663B05C1125674C6040606F /* ECJPAKESliceSafetyTests.swift in Sources */,
 				5ED1C754407408BAD2BB7CE0 /* ECJPAKEZKPTests.swift in Sources */,
 				942E56461BEF98C08C39D509 /* MobiHandshakeTests.swift in Sources */,
+				AC629BEC3848F04C51E9B8A2 /* PacketFramerTests.swift in Sources */,
 				542CC1CF0327CFA09112204C /* PendingResponseTableTests.swift in Sources */,
+				09E0F1BD6CC5CE422DC882E2 /* TandemAdvertisedNameMatchTests.swift in Sources */,
 				2F275772064B255DADAA522A /* TandemBasalScheduleTests.swift in Sources */,
 				BBEA470F1967B56271DF92A8 /* TandemBolusGuardTests.swift in Sources */,
 				C16C6F6837143D9154BB39CA /* TandemBolusReleaseIntegrationTests.swift in Sources */,
@@ -664,6 +784,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		04020BDADB105CA46253FB3E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = LoopKit;
+			targetProxy = 177F9C8FA5C92729DDA8AA18 /* PBXContainerItemProxy */;
+		};
 		147E5179F81EB53A2E75AE3E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 3DAA8593AE6A736056447397 /* TandemKit */;
@@ -673,6 +798,11 @@
 			isa = PBXTargetDependency;
 			name = LoopKit;
 			targetProxy = D477CE316E2100B3B1A330A6 /* PBXContainerItemProxy */;
+		};
+		37FE23480DD61EFEE2D4B7B2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3DAA8593AE6A736056447397 /* TandemKit */;
+			targetProxy = 0B8BF748E2D0400FBCE366E2 /* PBXContainerItemProxy */;
 		};
 		3B33B4AAF5F0DF8BE873D686 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -756,6 +886,44 @@
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
+		};
+		41F0D4ADDE04B260517DDB9A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				FRAMEWORK_SEARCH_PATHS = "$(BUILT_PRODUCTS_DIR) $(inherited)";
+				INFOPLIST_FILE = TandemWireProbe/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.loopandlearn.TandemWireProbe;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		52C7C3A0B777F16FF7A7D55E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				FRAMEWORK_SEARCH_PATHS = "$(BUILT_PRODUCTS_DIR) $(inherited)";
+				INFOPLIST_FILE = TandemWireProbe/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.loopandlearn.TandemWireProbe;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
 		};
 		5E4801F88567DB269482305E /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -1028,6 +1196,15 @@
 			buildConfigurations = (
 				AA9B5540E36B49A390783085 /* Debug */,
 				8344867DDF531D5F17159CA0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		197F5C234F55F38BA0396238 /* Build configuration list for PBXNativeTarget "TandemWireProbe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				41F0D4ADDE04B260517DDB9A /* Debug */,
+				52C7C3A0B777F16FF7A7D55E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

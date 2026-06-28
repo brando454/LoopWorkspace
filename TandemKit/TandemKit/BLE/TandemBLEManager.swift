@@ -30,12 +30,14 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
     private var peripheral: CBPeripheral?
     private var peripheralManager: TandemPeripheralManager?
 
+    #if DEBUG
     // Observe-only diagnostic tap, forwarded to the per-connection peripheral
     // manager when one exists. Defaults to nil; production never sets it. Set
     // only by the reads-only TandemWireProbeDriver facade for handshake capture.
     var wireTap: ((WireDirection, Data) -> Void)? {
         didSet { peripheralManager?.wireTap = wireTap }
     }
+    #endif
 
     private let logger = Logger(subsystem: "com.loopandlearn.TandemKit", category: "TandemBLEManager")
 
@@ -247,9 +249,11 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
             pumpManager: pumpManager,
             queue: managerQueue
         )
+        #if DEBUG
         // Propagate the diagnostic observe-only tap to the new connection
         // (nil in production, so this is inert unless a probe has set it).
         peripheralManager?.wireTap = wireTap
+        #endif
         peripheral.discoverServices([TandemServiceUUID.tip, TandemServiceUUID.deviceInformation])
     }
 
@@ -291,6 +295,15 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        // DIAG(WIRE): observe-only — surface the underlying CBError.Code so a
+        // bonding/encryption rejection is distinguishable from a plain remote drop.
+        if let cb = error as? CBError {
+            logger.error("DIAG disconnect CBError.code=\(cb.code.rawValue) (\(cb.localizedDescription))")
+        } else if let error = error {
+            logger.error("DIAG disconnect non-CBError: \(error.localizedDescription)")
+        } else {
+            logger.info("DIAG disconnect clean (no error)")
+        }
         logger.info("Disconnected: \(error?.localizedDescription ?? "clean")")
         peripheralManager?.cleanup()
         peripheralManager = nil

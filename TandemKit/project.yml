@@ -104,6 +104,52 @@ targets:
         embed: true
         codeSign: true
 
+  TandemWireProbe:
+    # Diagnostic-only, READS-ONLY app for capturing the Tandem Mobi pairing
+    # handshake against a spare pump. Links the TandemKit framework and drives
+    # only the public TandemWireProbeDriver facade — which exposes no delivery
+    # API. Throwaway harness: not part of the shipping plugin.
+    type: application
+    platform: iOS
+    sources:
+      - path: TandemWireProbe
+    info:
+      path: TandemWireProbe/Info.plist
+      properties:
+        # Critical for foreground BLE: without it CoreBluetooth refuses to scan.
+        NSBluetoothAlwaysUsageDescription: "TandemWireProbe captures the Tandem Mobi pairing handshake for protocol validation."
+        # Required because the production TandemBLEManager builds its CBCentralManager
+        # with CBCentralManagerOptionRestoreIdentifierKey. iOS throws an
+        # NSInternalInconsistencyException at init unless the app declares the
+        # bluetooth-central background mode. The probe never backgrounds, but the
+        # restore-identifier path still demands this declaration.
+        UIBackgroundModes:
+          - bluetooth-central
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.loopandlearn.TandemWireProbe
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        FRAMEWORK_SEARCH_PATHS: "$(BUILT_PRODUCTS_DIR) $(inherited)"
+    dependencies:
+      - target: TandemKit
+        embed: true
+        codeSign: true
+      # TandemKit links LoopKit but does not embed it (transitivelyLinkDependencies
+      # is off project-wide), so this standalone app must embed LoopKit itself or
+      # dyld fails to load TandemKit at launch.
+      - target: LoopKit/LoopKit
+        embed: true
+        codeSign: true
+    # Generate a SHARED scheme on disk so `xcodebuild -scheme TandemWireProbe`
+    # works from the command line. Without this, xcodegen writes no scheme and
+    # the only one present is a per-user Xcode scheme invisible to xcodebuild.
+    scheme:
+      testTargets: []
+
   TandemKitTests:
     type: bundle.unit-test
     platform: iOS
