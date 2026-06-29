@@ -58,6 +58,33 @@ enum PacketFramer {
         guard let last = chunks.last, last[0] == 0 else {
             return nil  // more chunks expected
         }
+
+        // WP6/L2: the buffer now looks complete (a final chunk with
+        // packetsRemaining == 0 arrived). Before concatenating, validate the
+        // buffer's integrity so two interleaved transactions or a lost/reordered
+        // chunk can never be silently fused into one frame. We detect, classify,
+        // and let the caller drop the buffer; we never try to recover a subset.
+        //
+        // 1. transactionId agreement: byte[1] of every chunk must equal the
+        //    first chunk's. A disagreement means chunks from two transactions
+        //    landed in one per-characteristic buffer.
+        // 2. countdown sequence: byte[0] across the buffer must be the strict
+        //    descending run count-1, count-2, ... 1, 0 with no gap, repeat, or
+        //    reorder. The final-chunk-is-0 gate above is necessary but not
+        //    sufficient; this proves the whole run.
+        let expectedTxId = chunks[0][1]
+        let chunkCount = chunks.count
+        for (index, chunk) in chunks.enumerated() {
+            let txId = chunk[1]
+            guard txId == expectedTxId else {
+                throw TandemFramingError.transactionIdMismatch(expected: expectedTxId, found: txId)
+            }
+            let expectedRemaining = UInt8(chunkCount - 1 - index)
+            guard chunk[0] == expectedRemaining else {
+                throw TandemFramingError.sequenceError(expected: expectedRemaining, found: chunk[0])
+            }
+        }
+
         var assembled = Data()
         for chunk in chunks {
             assembled.append(contentsOf: chunk.dropFirst(2))
@@ -113,4 +140,13 @@ enum PacketFramer {
 enum TandemFramingError: Error {
     case crcMismatch
     case reassemblyFailed
+    // WP6/L2: a chunk in the reassembly buffer carried a transactionId that
+    // disagreed with the buffer's first chunk. Two transactions interleaved on
+    // one characteristic; the frame is dropped rather than concatenated.
+    case transactionIdMismatch(expected: UInt8, found: UInt8)
+    // WP6/L2: the packetsRemaining countdown across the buffer was not the
+    // strict descending sequence N-1, N-2, ... 1, 0 (a dropped, duplicated, or
+    // reordered chunk). The frame is dropped rather than reassembled from a
+    // sequence we cannot trust.
+    case sequenceError(expected: UInt8, found: UInt8)
 }

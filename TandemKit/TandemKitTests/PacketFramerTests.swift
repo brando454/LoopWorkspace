@@ -116,4 +116,92 @@ final class PacketFramerTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - reassembly integrity validation (WP6/L2)
+    //
+    // The reassembler must reject a buffer whose chunks do not all belong to one
+    // transaction, or whose packetsRemaining countdown is not the strict
+    // descending run. These are detected and classified BEFORE CRC, so the
+    // caller drops the buffer with an accurate cause instead of a misattributed
+    // crcMismatch or an accidental CRC pass on fused garbage. No recovery is
+    // attempted; a corrupt or interleaved frame is dropped, never reconstructed.
+
+    // A buffer that completes (final chunk rem==0) but mixes two transactionIds
+    // throws transactionIdMismatch, naming the disagreement. Built so the
+    // mismatch is the only defect and is caught before CRC.
+    func testReassembleThrowsOnTransactionIdMismatch() {
+        var chunks = [
+            Data([0x01, 0x10, 0xAA, 0xBB]),  // rem=1, tx=0x10
+            Data([0x00, 0x11, 0xCC, 0xDD]),  // rem=0, tx=0x11 (interloper)
+        ]
+        XCTAssertThrowsError(try PacketFramer.reassemble(chunks: &chunks)) { error in
+            guard case let TandemFramingError.transactionIdMismatch(expected, found) = error else {
+                return XCTFail("expected transactionIdMismatch, got \(error)")
+            }
+            XCTAssertEqual(expected, 0x10)
+            XCTAssertEqual(found, 0x11)
+        }
+    }
+
+    // A gap in the countdown (a chunk lost between rem=2 and rem=0, so the
+    // buffer holds rem=[2,0] with one txId) throws sequenceError. The
+    // final-chunk-is-0 gate alone would not catch this; the per-position check
+    // does. Note the buffer count is 2, so position 0 expects rem=1, not 2.
+    func testReassembleThrowsOnSequenceGap() {
+        var chunks = [
+            Data([0x02, 0x07, 0xAA]),  // rem=2 but only 2 chunks present -> expected 1
+            Data([0x00, 0x07, 0xBB]),  // rem=0
+        ]
+        XCTAssertThrowsError(try PacketFramer.reassemble(chunks: &chunks)) { error in
+            guard case let TandemFramingError.sequenceError(expected, found) = error else {
+                return XCTFail("expected sequenceError, got \(error)")
+            }
+            XCTAssertEqual(expected, 1, "position 0 of a 2-chunk buffer must carry rem=1")
+            XCTAssertEqual(found, 2)
+        }
+    }
+
+    // Reordered chunks (rem=[0,1] instead of [1,0], same txId) throw
+    // sequenceError. The last chunk is rem==1 here, so this also exercises that
+    // the completeness gate is on the LAST element: with rem=1 last, it returns
+    // nil (more expected), not a sequence throw. Verify that boundary explicitly.
+    func testReassembleReorderedTrailingNonZeroReturnsNil() {
+        var reordered = [
+            Data([0x00, 0x07, 0xAA]),  // rem=0 first
+            Data([0x01, 0x07, 0xBB]),  // rem=1 last -> gate says more expected
+        ]
+        XCTAssertNil(try? PacketFramer.reassemble(chunks: &reordered),
+                     "a non-zero final countdown means the buffer is treated as incomplete")
+    }
+
+    // A reorder that still ends in rem==0 (rem=[0,...,0] impossible, so use a
+    // 3-chunk reorder [1,2,0] with one txId): the buffer completes but position
+    // 0 carries rem=1 where 2 is required, so sequenceError fires.
+    func testReassembleThrowsOnReorderWithZeroLast() {
+        var chunks = [
+            Data([0x01, 0x07, 0xAA]),  // pos0: expected rem=2, found 1
+            Data([0x02, 0x07, 0xBB]),  // pos1: expected rem=1, found 2
+            Data([0x00, 0x07, 0xCC]),  // pos2: expected rem=0, found 0
+        ]
+        XCTAssertThrowsError(try PacketFramer.reassemble(chunks: &chunks)) { error in
+            guard case let TandemFramingError.sequenceError(expected, found) = error else {
+                return XCTFail("expected sequenceError, got \(error)")
+            }
+            XCTAssertEqual(expected, 2)
+            XCTAssertEqual(found, 1)
+        }
+    }
+
+    // The validation must NOT reject a well-formed multi-chunk frame: same txId
+    // throughout, clean descending countdown. Built through serialize+chunk so
+    // the CRC is correct by construction; reassembly returns the original.
+    func testReassembleAcceptsValidMultiChunkFrame() {
+        let cargo = Data((0..<60).map { UInt8($0 &* 3 &+ 5) })
+        let serialized = PacketFramer.serialize(opCode: 0x33, transactionId: 0x42, cargo: cargo)
+        var chunks = PacketFramer.chunk(serialized: serialized, transactionId: 0x42, chunkSize: 18)
+        XCTAssertGreaterThan(chunks.count, 1, "fixture must span multiple chunks to exercise the run check")
+        let assembled = try? PacketFramer.reassemble(chunks: &chunks)
+        XCTAssertEqual(assembled, serialized.dropLast(2),
+                       "a valid same-txId, clean-countdown frame must pass validation unchanged")
+    }
 }

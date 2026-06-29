@@ -418,7 +418,15 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         #if DEBUG
         wireTap?(.inbound, data)
         #endif
-        guard data.count >= 2 else { return }
+        guard data.count >= 2 else {
+            // WP6/L2: classify the drop. A chunk shorter than the 2-byte
+            // [packetsRemaining][transactionId] header cannot be framed; surface
+            // the reason rather than swallowing it the way TK-WIRE1 once did.
+            #if DEBUG
+            wireTap?(.inbound, Data("DIAG-CHUNK-SHORT: \(data.count)B (< 2B header)".utf8))
+            #endif
+            return
+        }
         let packetsRemaining = data[0]
 
         receiveBuffers[uuid, default: []].append(data)
