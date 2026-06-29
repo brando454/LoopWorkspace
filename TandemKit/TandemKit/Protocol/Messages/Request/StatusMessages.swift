@@ -65,8 +65,15 @@ struct CurrentBolusStatusResponse: TandemResponse {
     let requestedVolumeMU: UInt32   // milliunits
     let bolusTypeBitmask: UInt8
 
+    // WP6/L3: liveness rests on deliveryStatus ALONE. bolusId is the identifier
+    // of the most recent bolus and stays non-zero after delivery finishes, so the
+    // old bolusId-not-zero clause latched this to true forever once any bolus had
+    // run, telling Loop a bolus was perpetually in progress. The parser defaults an
+    // unrecognized status byte to .done (see init), so a garbled status reads as
+    // no-active-bolus — the safe direction here: erring toward "not delivering"
+    // rather than "forever in progress."
     var hasActiveBolus: Bool {
-        deliveryStatus != .done || bolusId != 0
+        deliveryStatus != .done
     }
 
     init?(cargo: Data) {

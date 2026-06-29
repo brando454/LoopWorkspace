@@ -166,6 +166,57 @@ final class TandemMessageVectorTests: XCTestCase {
         XCTAssertEqual(r.deliveredVolumeMU, 0)
     }
 
+    // MARK: - CurrentBolusStatus liveness (WP6/L3)
+    //
+    // hasActiveBolus must rest on deliveryStatus alone. bolusId is the last
+    // bolus's identifier and stays non-zero after delivery completes; the old
+    // predicate OR-ed bolusId != 0 and so reported a bolus perpetually in
+    // progress once any bolus had run. These vectors build a >=15-byte cargo with
+    // deliveryStatus at byte[0] and bolusId (LE) at bytes[1..2].
+
+    // status DONE (0) with a non-zero bolusId: the regression case. Must read as
+    // NO active bolus despite the non-zero id.
+    func testCurrentBolusStatus_doneWithNonZeroId_isNotActive() throws {
+        // [0]=0 done, [1..2]=0x0190 (400) bolusId, rest zero, padded to 15.
+        let cargo = bytes([0, -112, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        let r = try XCTUnwrap(CurrentBolusStatusResponse(cargo: cargo))
+        XCTAssertEqual(r.bolusId, 400, "bolusId is parsed and non-zero")
+        XCTAssertEqual(r.deliveryStatus, .done)
+        XCTAssertFalse(r.hasActiveBolus,
+                       "a completed bolus with a non-zero id must NOT read as active")
+    }
+
+    // status DELIVERING (1) reads active.
+    func testCurrentBolusStatus_delivering_isActive() throws {
+        let cargo = bytes([1, -112, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        let r = try XCTUnwrap(CurrentBolusStatusResponse(cargo: cargo))
+        XCTAssertEqual(r.deliveryStatus, .delivering)
+        XCTAssertTrue(r.hasActiveBolus)
+    }
+
+    // status REQUESTING (2) reads active.
+    func testCurrentBolusStatus_requesting_isActive() throws {
+        let cargo = bytes([2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        let r = try XCTUnwrap(CurrentBolusStatusResponse(cargo: cargo))
+        XCTAssertEqual(r.deliveryStatus, .requesting)
+        XCTAssertTrue(r.hasActiveBolus)
+    }
+
+    // An unrecognized status byte defaults to .done (safe direction): a garbled
+    // status reads as NO active bolus rather than forever-in-progress, even with
+    // a non-zero bolusId.
+    func testCurrentBolusStatus_unknownStatusByte_defaultsToDoneAndNotActive() throws {
+        let cargo = bytes([7, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        let r = try XCTUnwrap(CurrentBolusStatusResponse(cargo: cargo))
+        XCTAssertEqual(r.deliveryStatus, .done, "unknown raw status defaults to .done")
+        XCTAssertFalse(r.hasActiveBolus)
+    }
+
+    // Cargo shorter than 15 bytes fails to parse (guard).
+    func testCurrentBolusStatus_rejectsShortCargo() {
+        XCTAssertNil(CurrentBolusStatusResponse(cargo: Data(count: 14)))
+    }
+
     // Tandem epoch math: pumpSeconds 458576820 -> a known wall-clock instant.
     // 2008-01-01T00:00:00Z + 458576820s.
     func testTandemEpochRoundTrip() {
