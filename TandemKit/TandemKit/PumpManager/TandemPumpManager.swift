@@ -60,6 +60,15 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
     private var secretStore: SecretStore = KeychainSecretStore()
     private let stateQueue = DispatchQueue(label: "com.loopandlearn.TandemKit.stateQueue", qos: .utility)
     private var statusObservers = WeakSynchronizedSet<PumpManagerStatusObserver>()
+
+    // WP6/M2: last status value fanned out to observers. Used as the genuine
+    // oldStatus and as the diff guard so status-observer notifications fire only
+    // on a real value change. IUO because status is computed from state and
+    // cannot be seeded until state is set; every designated init seeds it right
+    // after assigning self.state, before the manager is published, so the
+    // force-unwrap in the notify path is always safe. Read/written only on
+    // stateQueue.
+    private var lastNotifiedStatus: PumpManagerStatus!
     private let logger = Logger(subsystem: "com.loopandlearn.TandemKit", category: "TandemPumpManager")
     private var bleManager: TandemBLEManager?
 
@@ -67,6 +76,7 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
 
     public init(state: TandemPumpState) {
         self.state = state
+        self.lastNotifiedStatus = self.status
         self.bleManager = TandemBLEManager(pumpManager: self)
     }
 
@@ -77,6 +87,7 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
     // production always goes through init(state:) and keeps the live central.
     init(state: TandemPumpState, centralFactory: @escaping TandemBLEManager.CentralFactory) {
         self.state = state
+        self.lastNotifiedStatus = self.status
         self.bleManager = TandemBLEManager(pumpManager: self, centralFactory: centralFactory)
     }
 
@@ -86,6 +97,7 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
     // default KeychainSecretStore.
     init(state: TandemPumpState, secretStore: SecretStore) {
         self.state = state
+        self.lastNotifiedStatus = self.status
         self.secretStore = secretStore
         // Use the nil-returning central factory so no CBCentralManager/auth probe
         // is constructed under xctest (the live convenience init traps in a test
@@ -109,12 +121,30 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
         statusObservers.removeElement(observer)
     }
 
+    // WP6/M2: public entry point. Hop onto stateQueue so the read-compare-write
+    // of the assembled status is serialized, then run the shared locked logic.
+    // Delegate persistence is intentionally NOT done here; that lives in
+    // updateState so a pure-notify call cannot double-persist.
     func notifyStatusDidChange() {
-        let currentStatus = self.status
+        stateQueue.async { self.notifyStatusObserversLocked() }
+    }
+
+    // WP6/M2: diff-guarded status-observer fan-out. MUST run on stateQueue.
+    // Assembles the current status, compares it to the last value we published,
+    // and fans out only on a real change, passing the genuine prior value as
+    // oldStatus and advancing the watermark first. Connection-state-only and
+    // other non-status mutations leave the assembled status unchanged and are
+    // suppressed here. WeakSynchronizedSet delivers to each observer on its own
+    // registered queue, so no per-observer dispatch is added.
+    private func notifyStatusObserversLocked() {
+        dispatchPrecondition(condition: .onQueue(stateQueue))
+        let newStatus = self.status
+        let oldStatus = self.lastNotifiedStatus!
+        guard newStatus != oldStatus else { return }
+        self.lastNotifiedStatus = newStatus
         statusObservers.forEach { observer in
-            observer.pumpManager(self, didUpdate: currentStatus, oldStatus: currentStatus)
+            observer.pumpManager(self, didUpdate: newStatus, oldStatus: oldStatus)
         }
-        delegateQueue.async { self.pumpManagerDelegate?.pumpManagerDidUpdateState(self) }
     }
 
     // MARK: - BLE heartbeat
@@ -442,6 +472,11 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
     func updateState(_ block: @escaping (TandemPumpState) -> Void) {
         stateQueue.async {
             block(self.state)
+            // WP6/M2: notify status observers of any real change this mutation
+            // produced. Already on stateQueue, so call the locked helper directly
+            // (no redundant hop). The diff guard inside suppresses mutations that
+            // do not move the assembled status (e.g. connectionState-only writes).
+            self.notifyStatusObserversLocked()
             self.delegateQueue.async {
                 self.pumpManagerDelegate?.pumpManagerDidUpdateState(self)
             }
