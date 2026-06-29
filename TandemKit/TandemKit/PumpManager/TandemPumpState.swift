@@ -42,9 +42,14 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
     public var isOnboarded: Bool
     public var insulinType: InsulinType?
     public var lastSync: Date
-    public var pairingCode: String        // 6-digit pairing code (stored only in keychain in production)
-    public var derivedSecretHex: String?  // EC-JPAKE derived secret — skip full handshake on reconnect
-    public var serverNonce3Hex: String?   // Stored alongside derivedSecretHex
+    // WP6/M1: these three secrets are kept in memory for the auth path but are
+    // NOT serialized into rawValue (the plaintext, unencrypted PumpManager
+    // rawState). They persist in the iOS Keychain via SecretStore, keyed by the
+    // BLE peripheral UUID. TandemPumpManager owns the connect-time migration
+    // (read-through with legacy-plaintext fallback, then write-through).
+    public var pairingCode: String        // 6-digit pairing code (Keychain-only; never in rawValue)
+    public var derivedSecretHex: String?  // EC-JPAKE derived secret (Keychain-only; never in rawValue)
+    public var serverNonce3Hex: String?   // stored alongside derivedSecretHex (Keychain-only)
 
     // Pump identity (from DIS at connect time)
     public var pumpSerialNumber: String
@@ -113,6 +118,12 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
         isOnboarded              = rawValue["isOnboarded"] as? Bool ?? false
         insulinType              = (rawValue["insulinType"] as? InsulinType.RawValue).flatMap(InsulinType.init)
         lastSync                 = rawValue["lastSync"] as? Date ?? .distantPast
+        // WP6/M1: these reads are the legacy-plaintext FALLBACK only. Installs
+        // paired under the old scheme still carry these keys in rawState; the
+        // values land in memory here so TandemPumpManager's connect-time
+        // migration can write them through to the Keychain and then they stop
+        // being serialized (see rawValue getter). Post-migration rawState has
+        // no such keys and these resolve to the empty/nil defaults.
         pairingCode              = rawValue["pairingCode"] as? String ?? ""
         derivedSecretHex         = rawValue["derivedSecretHex"] as? String
         serverNonce3Hex          = rawValue["serverNonce3Hex"] as? String
@@ -141,9 +152,9 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
         v["isOnboarded"]          = isOnboarded
         v["insulinType"]          = insulinType?.rawValue
         v["lastSync"]             = lastSync
-        v["pairingCode"]          = pairingCode
-        v["derivedSecretHex"]     = derivedSecretHex
-        v["serverNonce3Hex"]      = serverNonce3Hex
+        // WP6/M1: pairingCode/derivedSecretHex/serverNonce3Hex are deliberately
+        // NOT written here. They persist only in the Keychain via SecretStore.
+        // Writing them to this plaintext dictionary is the defect M1 closes.
         v["pumpSerialNumber"]     = pumpSerialNumber
         v["firmwareVersion"]      = firmwareVersion
         v["reservoirUnits"]       = reservoirUnits

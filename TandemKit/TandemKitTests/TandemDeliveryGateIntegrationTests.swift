@@ -49,6 +49,7 @@ final class TandemDeliveryGateIntegrationTests: XCTestCase {
     // .notConnected — the signal we use to prove the gate let a request through.
     private final class InertPeripheral: TandemPeripheral {
         weak var delegate: CBPeripheralDelegate?
+        let identifier = UUID()  // WP6/M1: protocol now requires a UUID; a stub is fine for the double.
         var services: [CBService]? { nil }
         func discoverCharacteristics(_ characteristicUUIDs: [CBUUID]?, for service: CBService) {}
         func setNotifyValue(_ enabled: Bool, for characteristic: CBCharacteristic) {}

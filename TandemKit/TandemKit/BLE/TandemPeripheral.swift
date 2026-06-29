@@ -13,6 +13,9 @@ import CoreBluetooth
 // The surface is exactly the seven members TandemPeripheralManager invokes on its stored
 // peripheral. CBPeripheral already implements all of them, so conformance is empty.
 public protocol TandemPeripheral: AnyObject {
+    // WP6/M1: peripheral UUID, used to scope per-pump Keychain secret keys.
+    // CBPeripheral already provides `identifier`, so conformance stays empty.
+    var identifier: UUID { get }
     var delegate: CBPeripheralDelegate? { get set }
     var services: [CBService]? { get }
     func discoverCharacteristics(_ characteristicUUIDs: [CBUUID]?, for service: CBService)

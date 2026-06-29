@@ -248,6 +248,11 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         guard let pm = pumpManager else { return }
         pm.updateState { $0.connectionState = .authenticating }
 
+        // WP6/M1: pull this pump's secrets from the Keychain (and migrate any
+        // legacy plaintext) BEFORE the handshake reads them, so a returning pump
+        // can take the reconnect fast-path. Keyed by the peripheral UUID.
+        pm.migrateSecretsSync(peripheralUUID: peripheral.identifier)
+
         let authState = TandemAuthState(
             pairingCode: pm.state.pairingCode,
             derivedSecretHex: pm.state.derivedSecretHex,
@@ -303,6 +308,10 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                                 $0.serverNonce3Hex = authState.serverNonce3Hex
                                 $0.connectionState = .connected
                             }
+                            // WP6/M1: persist the freshly derived secrets to the
+                            // Keychain (never to plaintext rawState). Keyed by the
+                            // peripheral UUID, matching the auth-start migration.
+                            self.pumpManager?.persistSecrets(peripheralUUID: self.peripheral.identifier)
                             self.bleManager?.authenticationCompleted()
                             break
                         }

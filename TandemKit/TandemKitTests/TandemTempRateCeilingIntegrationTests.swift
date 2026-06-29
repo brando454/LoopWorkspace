@@ -29,6 +29,7 @@ final class TandemTempRateCeilingIntegrationTests: XCTestCase {
 
     private final class RecordingPeripheral: TandemPeripheral {
         weak var delegate: CBPeripheralDelegate?
+        let identifier = UUID()  // WP6/M1: protocol now requires a UUID; a stub is fine for the double.
         var services: [CBService]? { nil }
         func discoverCharacteristics(_ characteristicUUIDs: [CBUUID]?, for service: CBService) {}
         func setNotifyValue(_ enabled: Bool, for characteristic: CBCharacteristic) {}

@@ -54,6 +54,10 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
     // MARK: - Internal
 
     public private(set) var state: TandemPumpState
+    // WP6/M1: where the three pairing secrets persist. Defaults to the Keychain
+    // in production; the offline migration suite injects an in-memory fake via
+    // the test initializer. Mutable only through init so production cannot swap it.
+    private var secretStore: SecretStore = KeychainSecretStore()
     private let stateQueue = DispatchQueue(label: "com.loopandlearn.TandemKit.stateQueue", qos: .utility)
     private var statusObservers = WeakSynchronizedSet<PumpManagerStatusObserver>()
     private let logger = Logger(subsystem: "com.loopandlearn.TandemKit", category: "TandemPumpManager")
@@ -74,6 +78,19 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
     init(state: TandemPumpState, centralFactory: @escaping TandemBLEManager.CentralFactory) {
         self.state = state
         self.bleManager = TandemBLEManager(pumpManager: self, centralFactory: centralFactory)
+    }
+
+    // WP6/M1 test seam: inject an offline SecretStore (e.g. InMemorySecretStore)
+    // so the secret-migration logic can be exercised without the iOS Keychain.
+    // Internal, not public; production goes through init(state:) and keeps the
+    // default KeychainSecretStore.
+    init(state: TandemPumpState, secretStore: SecretStore) {
+        self.state = state
+        self.secretStore = secretStore
+        // Use the nil-returning central factory so no CBCentralManager/auth probe
+        // is constructed under xctest (the live convenience init traps in a test
+        // host). Matches the pattern in init(state:centralFactory:).
+        self.bleManager = TandemBLEManager(pumpManager: self, centralFactory: { _, _ in nil })
     }
 
     public convenience init?(rawState: RawStateValue) {
@@ -347,6 +364,78 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
             localIdentifier: state.pumpSerialNumber,
             udiDeviceIdentifier: nil
         )
+    }
+
+    // MARK: - WP6/M1 secret persistence (Keychain via SecretStore)
+
+    // Per-pump service key, scoped by the BLE peripheral UUID. The UUID is known
+    // at connect time and stable per pump per device. pumpSerialNumber would be
+    // the portable key but is not populated from DIS today (WP6 follow-up).
+    private func secretServiceKey(_ uuid: UUID, field: String) -> String {
+        "com.loopandlearn.TandemKit.\(uuid.uuidString).\(field)"
+    }
+
+    // Connect-time migration. Reads each secret from the Keychain; on a miss,
+    // falls back to any legacy plaintext value already hydrated into state from
+    // rawState, then writes it through so the upgrade self-heals. After this
+    // runs, the secrets live only in the Keychain (rawValue no longer
+    // serializes them). Idempotent: a second call is a pure read-through.
+    func migrateSecrets(peripheralUUID uuid: UUID) {
+        stateQueue.async {
+            self.runSecretMigration(uuid: uuid)
+        }
+    }
+
+    // Synchronous variant for the auth-start path: the handshake reads the three
+    // secrets immediately after to decide whether it can skip a full re-pair, so
+    // migration must complete before that read. Runs the migration core on the
+    // stateQueue and returns only when state reflects the Keychain values.
+    func migrateSecretsSync(peripheralUUID uuid: UUID) {
+        stateQueue.sync {
+            self.runSecretMigration(uuid: uuid)
+        }
+    }
+
+    // Synchronous core, factored out so tests can drive it directly on the
+    // calling thread without the stateQueue hop. Reads through with fallback,
+    // updates in-memory state, and persists the resolved values.
+    func runSecretMigration(uuid: UUID) {
+        let codeKey   = secretServiceKey(uuid, field: "pairingCode")
+        let secretKey = secretServiceKey(uuid, field: "derivedSecretHex")
+        let nonceKey  = secretServiceKey(uuid, field: "serverNonce3Hex")
+
+        // pairingCode: empty string is treated as "absent" (the blank default).
+        if let stored = secretStore.secret(forService: codeKey), !stored.isEmpty {
+            state.pairingCode = stored
+        } else if !state.pairingCode.isEmpty {
+            secretStore.setSecret(state.pairingCode, forService: codeKey)
+        }
+
+        if let stored = secretStore.secret(forService: secretKey) {
+            state.derivedSecretHex = stored
+        } else if let legacy = state.derivedSecretHex {
+            secretStore.setSecret(legacy, forService: secretKey)
+        }
+
+        if let stored = secretStore.secret(forService: nonceKey) {
+            state.serverNonce3Hex = stored
+        } else if let legacy = state.serverNonce3Hex {
+            secretStore.setSecret(legacy, forService: nonceKey)
+        }
+    }
+
+    // Write the current in-memory secrets through to the Keychain. Called after
+    // a fresh handshake derives new secrets, so they survive the next launch
+    // without ever touching the plaintext rawState.
+    func persistSecrets(peripheralUUID uuid: UUID) {
+        stateQueue.async {
+            let codeKey   = self.secretServiceKey(uuid, field: "pairingCode")
+            let secretKey = self.secretServiceKey(uuid, field: "derivedSecretHex")
+            let nonceKey  = self.secretServiceKey(uuid, field: "serverNonce3Hex")
+            self.secretStore.setSecret(self.state.pairingCode.isEmpty ? nil : self.state.pairingCode, forService: codeKey)
+            self.secretStore.setSecret(self.state.derivedSecretHex, forService: secretKey)
+            self.secretStore.setSecret(self.state.serverNonce3Hex, forService: nonceKey)
+        }
     }
 
     // Internal: update state and notify Loop.
