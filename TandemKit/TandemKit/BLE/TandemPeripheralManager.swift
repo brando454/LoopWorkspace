@@ -67,6 +67,9 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     private var receiveBuffers: [CBUUID: [Data]] = [:]
 
     private let txID = TransactionID()
+    // WP6/M4: serializes the send critical section (txID allocation through
+    // chunk-write enqueue) so concurrent sends cannot interleave on the wire.
+    private let sendSerializer = SendSerializer()
     private var authState: TandemAuthState?
 
     // Auth-response serialization. CoreBluetooth callbacks arrive ordered on
@@ -336,6 +339,13 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         // fire-and-forget and request/response delivery from one chokepoint.
         try assertDeliveryPreconditions(for: request)
 
+        // WP6/M4: serialize txID allocation through chunk-write enqueue so two
+        // concurrent sends cannot interleave their chunks on the wire or
+        // double-allocate a transaction ID. The precondition check above stays
+        // outside the serializer so a rejected command fails fast rather than
+        // queuing behind in-flight sends. The body never blocks on the wire
+        // (writeValue enqueues and returns), so it cannot wedge the chain.
+        try await sendSerializer.run { [self] in
         let txId = txID.next()
         let cargo = request.cargo()
         let chunkSize = (type(of: request).characteristic == TandemCharacteristicUUID.control)
@@ -372,6 +382,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
             #endif
             peripheral.writeValue(chunk, for: char, type: .withResponse)
         }
+        } // end sendSerializer.run
     }
 
     // TK-H5: central precondition gate for insulin-delivery commands.
