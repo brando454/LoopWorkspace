@@ -22,11 +22,10 @@ import Foundation
 //   SetTempRateResponse       opCode = -91 (0xA5)  on CONTROL characteristic
 //
 // These share opcodes and are disambiguated ONLY by characteristic. TandemKit's
-// current response router matches on opCode alone (see TandemPeripheralManager
-// pendingResponses) and therefore CANNOT distinguish them. The connection-actor
-// redesign (next deliverable) must key pending responses on (characteristic, opCode),
-// not opCode alone. Until then, never have a temp-rate request and a
-// last-bolus-status request in flight at the same time.
+// response router keys pending responses on the (characteristic, opCode) pair
+// (see `PendingResponseTable.resolve` and TandemPeripheralManager:495), so the
+// collision is handled: a response is matched to the waiter that registered the
+// same characteristic AND opCode, and the two pairs above never cross-resolve.
 struct LastBolusStatusV2Request: TandemRequest {
     static let opCode: UInt8 = 0xA4  // -92 signed → 0xA4
     static let characteristic = TandemCharacteristicUUID.currentStatus
