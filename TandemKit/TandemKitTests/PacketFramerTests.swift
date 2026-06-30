@@ -51,7 +51,7 @@ final class PacketFramerTests: XCTestCase {
     func testRoundTripIdentityAcrossChunkSizes() {
         for chunkSize in [18, 40] {
             let cargo = Data((0..<37).map { UInt8($0 &* 7 &+ 1) })
-            let serialized = PacketFramer.serialize(opCode: 0x55, transactionId: 0x11, cargo: cargo)
+            let serialized = try! PacketFramer.serialize(opCode: 0x55, transactionId: 0x11, cargo: cargo)
             var chunks = PacketFramer.chunk(serialized: serialized, transactionId: 0x11, chunkSize: chunkSize)
             let assembled = try? PacketFramer.reassemble(chunks: &chunks)
             XCTAssertEqual(assembled, serialized.dropLast(2),
@@ -69,7 +69,7 @@ final class PacketFramerTests: XCTestCase {
     // chunks. Confirms the boundary logic over a long countdown.
     func testSyntheticMultiChunkRoundTrip() {
         let cargo = Data((0..<100).map { UInt8($0) })
-        let serialized = PacketFramer.serialize(opCode: 0x24, transactionId: 0x09, cargo: cargo)
+        let serialized = try! PacketFramer.serialize(opCode: 0x24, transactionId: 0x09, cargo: cargo)
         var chunks = PacketFramer.chunk(serialized: serialized, transactionId: 0x09, chunkSize: 18)
         // serializedLen = 3 + 100 + 2 = 105; 105 / 18 -> 6 chunks (ceil).
         XCTAssertEqual(chunks.count, 6)
@@ -197,11 +197,60 @@ final class PacketFramerTests: XCTestCase {
     // the CRC is correct by construction; reassembly returns the original.
     func testReassembleAcceptsValidMultiChunkFrame() {
         let cargo = Data((0..<60).map { UInt8($0 &* 3 &+ 5) })
-        let serialized = PacketFramer.serialize(opCode: 0x33, transactionId: 0x42, cargo: cargo)
+        let serialized = try! PacketFramer.serialize(opCode: 0x33, transactionId: 0x42, cargo: cargo)
         var chunks = PacketFramer.chunk(serialized: serialized, transactionId: 0x42, chunkSize: 18)
         XCTAssertGreaterThan(chunks.count, 1, "fixture must span multiple chunks to exercise the run check")
         let assembled = try? PacketFramer.reassemble(chunks: &chunks)
         XCTAssertEqual(assembled, serialized.dropLast(2),
                        "a valid same-txId, clean-countdown frame must pass validation unchanged")
+    }
+
+    // MARK: - cargo length-field guard (WP6/L1)
+
+    // The cargoLength byte (byte[2]) is a single UInt8. serialize must accept a
+    // cargo exactly at the field maximum (255 bytes): the boundary is inclusive,
+    // and the encoded length byte must read back as 0xFF with the cargo intact.
+    func testSerializeAcceptsCargoAtSingleByteMaximum() throws {
+        let cargo = Data(repeating: 0xAB, count: 255)
+        let serialized = try PacketFramer.serialize(opCode: 0x55, transactionId: 0x11, cargo: cargo)
+        // [opCode][txId][len][cargo...][CRC lo][CRC hi]
+        XCTAssertEqual(serialized[2], 0xFF, "length byte must encode 255 as 0xFF")
+        XCTAssertEqual(serialized.dropFirst(3).dropLast(2), cargo,
+                       "cargo must be framed intact at the field maximum")
+    }
+
+    // One byte over the field width must be rejected before any framing, not
+    // truncated via an unchecked UInt8 conversion (which on a 256-byte count
+    // would wrap to 0) and not trapped. Fail closed with cargoTooLarge carrying
+    // the offending count.
+    func testSerializeThrowsWhenCargoExceedsSingleByteField() {
+        let cargo = Data(repeating: 0xAB, count: 256)
+        XCTAssertThrowsError(try PacketFramer.serialize(opCode: 0x55, transactionId: 0x11, cargo: cargo)) { error in
+            guard case let TandemFramingError.cargoTooLarge(count) = error else {
+                return XCTFail("expected cargoTooLarge, got \(error)")
+            }
+            XCTAssertEqual(count, 256)
+        }
+    }
+
+    // The signed encoder shares the same single-byte length field, so it must
+    // enforce the identical bound. 255 is accepted; 256 fails closed before the
+    // HMAC is computed. A throwaway 20-byte key is sufficient since the guard
+    // runs first.
+    func testSerializeSignedEnforcesSameLengthBound() throws {
+        let key = Data(repeating: 0x01, count: 20)
+        let ok = try PacketFramer.serializeSigned(opCode: 0x60, transactionId: 0x22,
+                                                  cargo: Data(repeating: 0x07, count: 255),
+                                                  authKey: key, timeSinceReset: 0)
+        XCTAssertEqual(ok[2], 0xFF, "signed length byte must encode 255 as 0xFF")
+
+        XCTAssertThrowsError(try PacketFramer.serializeSigned(opCode: 0x60, transactionId: 0x22,
+                                                              cargo: Data(repeating: 0x07, count: 256),
+                                                              authKey: key, timeSinceReset: 0)) { error in
+            guard case let TandemFramingError.cargoTooLarge(count) = error else {
+                return XCTFail("expected cargoTooLarge, got \(error)")
+            }
+            XCTAssertEqual(count, 256)
+        }
     }
 }

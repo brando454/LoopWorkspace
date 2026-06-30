@@ -353,7 +353,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
 
         let serialized: Data
         if type(of: request).isSigned, let authKey = pumpManager?.state.authKey {
-            serialized = PacketFramer.serializeSigned(
+            serialized = try PacketFramer.serializeSigned(
                 opCode: type(of: request).opCode,
                 transactionId: txId,
                 cargo: cargo,
@@ -361,7 +361,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                 timeSinceReset: pumpManager?.state.pumpTimeSinceReset ?? 0
             )
         } else {
-            serialized = PacketFramer.serialize(
+            serialized = try PacketFramer.serialize(
                 opCode: type(of: request).opCode,
                 transactionId: txId,
                 cargo: cargo

@@ -96,7 +96,16 @@ enum PacketFramer {
     }
 
     // Serialize a message for sending (without signing).
-    static func serialize(opCode: UInt8, transactionId: UInt8, cargo: Data) -> Data {
+    static func serialize(opCode: UInt8, transactionId: UInt8, cargo: Data) throws -> Data {
+        // WP6/L1: cargo length is encoded as a single byte (byte[2]). Reject any
+        // cargo that cannot be represented in that field before framing, so an
+        // unchecked UInt8(cargo.count) can never silently truncate the length or
+        // trap on a count >= 256. Today every cargo is well under this bound;
+        // this is a fail-closed guard against a larger message type being added
+        // later on the command path.
+        guard cargo.count <= 255 else {
+            throw TandemFramingError.cargoTooLarge(count: cargo.count)
+        }
         var out = Data()
         out.append(opCode)
         out.append(transactionId)
@@ -115,7 +124,14 @@ enum PacketFramer {
         cargo: Data,
         authKey: Data,
         timeSinceReset: UInt32
-    ) -> Data {
+    ) throws -> Data {
+        // WP6/L1: same single-byte length-field guard as serialize. The signed
+        // path adds timeSinceReset + HMAC after the cargo, but the cargoLength
+        // byte still encodes only the cargo, so the same bound applies. Fail
+        // closed before computing the HMAC or framing any bytes.
+        guard cargo.count <= 255 else {
+            throw TandemFramingError.cargoTooLarge(count: cargo.count)
+        }
         var out = Data()
         out.append(opCode)
         out.append(transactionId)
@@ -149,4 +165,10 @@ enum TandemFramingError: Error {
     // reordered chunk). The frame is dropped rather than reassembled from a
     // sequence we cannot trust.
     case sequenceError(expected: UInt8, found: UInt8)
+    // WP6/L1: the cargo length exceeded the single-byte length field the wire
+    // format encodes (byte[2], a UInt8). Rather than truncate the count via an
+    // unchecked UInt8 conversion (which would write a wrong length and, for a
+    // count >= 256, trap), we reject the message before any bytes are framed.
+    // Fails closed: the send path throws and the command is never transmitted.
+    case cargoTooLarge(count: Int)
 }
