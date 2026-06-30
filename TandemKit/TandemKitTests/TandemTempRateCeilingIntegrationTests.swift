@@ -176,13 +176,36 @@ final class TandemTempRateCeilingIntegrationTests: XCTestCase {
         let recorder = TempTransportRecorder()
         let (pm, pumpManager) = makeManager(recorder: recorder, scheduledRate: 1.0, policy: .reportEnactedRate)
 
+        // The enacted-percent writeback runs through updateState, which hops onto
+        // stateQueue asynchronously and only THEN enqueues pumpManagerDidUpdateState
+        // on delegateQueue. The enact completion fires independently and can land
+        // before that writeback applies, so reading state right after the completion
+        // races the write. Fence the state reads on the delegate callback (the same
+        // happens-before used by the WP6/M5 reconnect tests) instead of sleeping or
+        // reading eagerly. Gate the fence on the enacted percent so an unrelated
+        // earlier state update cannot satisfy it prematurely; fulfill at most once.
+        let fence = ReconnectFenceDelegate()
+        let stateWritten = expectation(description: "enacted-percent writeback landed on stateQueue")
+        var fenceFulfilled = false
+        pumpManager.delegateQueue = DispatchQueue(label: "test.TandemTempRateCeiling.delegate")
+        pumpManager.pumpManagerDelegate = fence
+        fence.onUpdate = {
+            // Runs on delegateQueue, enqueued from inside the stateQueue mutation
+            // block, so the write happens-before this read.
+            guard !fenceFulfilled, pumpManager.state.activeTempRatePercent == 250 else { return }
+            fenceFulfilled = true
+            stateWritten.fulfill()
+        }
+
         let exp = expectation(description: "enactTempBasal completed")
         // 5.0 U/hr against 1.0 U/hr = 500%, clamps to 250%.
         pm.enactTempBasal(unitsPerHour: 5.0, duration: 1800, at: effectiveDate) { error in
             XCTAssertNil(error, "over-ceiling under .reportEnactedRate must proceed and report success")
             exp.fulfill()
         }
+        // Wait on BOTH the completion and the confirmed state writeback before reading.
         waitForExpectations(timeout: 5)
+        withExtendedLifetime(pumpManager) {}
         XCTAssertTrue(recorder.tempCommandWasSent, "must send a command under .reportEnactedRate")
         XCTAssertEqual(recorder.sentTempPercents, [250],
                        "over-ceiling command must be clamped to the 250% ceiling on the wire")
