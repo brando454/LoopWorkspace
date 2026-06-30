@@ -562,6 +562,31 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
         }
     }
 
+    // WP6/M5: called by the BLE manager when bounded auto-reconnect either
+    // exhausts its retry ceiling (true) or re-authenticates (false). Routes
+    // through updateState so the change persists and fans out on stateQueue like
+    // any other state mutation. The flag does not move the assembled
+    // PumpManagerStatus (battery/basal/bolus/insulin), so the M2 status-diff
+    // correctly leaves status-observer fan-out unchanged; the terminal condition
+    // surfaces to Loop through the pumpStatusHighlight UI path, which reads this
+    // flag. No-op when the value is unchanged so repeated calls do not churn.
+    func setPumpUnreachable(_ unreachable: Bool) {
+        stateQueue.async {
+            guard self.state.pumpUnreachable != unreachable else { return }
+            self.state.pumpUnreachable = unreachable
+            // Mirror updateStates locked tail: the flag does not move the
+            // assembled status, so notifyStatusObserversLockeds diff guard
+            // suppresses observer fan-out, but Loop is still informed of the
+            // raw-state change (which drives the pumpStatusHighlight refresh)
+            // and SwiftUI is told to re-render.
+            self.notifyStatusObserversLocked()
+            self.delegateQueue.async {
+                self.pumpManagerDelegate?.pumpManagerDidUpdateState(self)
+            }
+            DispatchQueue.main.async { self.objectWillChange.send() }
+        }
+    }
+
     // Internal: update state and notify Loop.
     func updateState(_ block: @escaping (TandemPumpState) -> Void) {
         stateQueue.async {

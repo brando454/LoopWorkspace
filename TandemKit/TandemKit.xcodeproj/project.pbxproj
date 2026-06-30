@@ -28,6 +28,7 @@
 		32B7531DAEADC8844F475C48 /* PacketFramer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BF6CC38058B0C112393CEA6 /* PacketFramer.swift */; };
 		34C77B8605392B3A5EC2D763 /* LoopKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 1876680BCF0BBB17E208152E /* LoopKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		3E0BB7FAF3D2DDC566CC818C /* LoopKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1876680BCF0BBB17E208152E /* LoopKit.framework */; };
+		3EB106EA9FB11C37150120A2 /* TandemReconnectBackoffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1667AB78F304ECA31039E256 /* TandemReconnectBackoffTests.swift */; };
 		3F7B3C4EDE35A0FFC98C7CF9 /* TandemPumpManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ED9ED6F07EBD3AE3056F9C3 /* TandemPumpManager.swift */; };
 		43D6AF212B52F86D7331DAE5 /* TandemKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96D7D617AC083C7ABCBB8FED /* TandemKit.framework */; };
 		45D21CF96C066F5F932B9812 /* TandemKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 96D7D617AC083C7ABCBB8FED /* TandemKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -72,6 +73,7 @@
 		C01A8ED2A9EAD31E539E5A55 /* TandemKitUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9861EC9E10F853CD784AD02A /* TandemKitUI.framework */; };
 		C16C6F6837143D9154BB39CA /* TandemBolusReleaseIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8103CDA5C4FE666DA5C0AB72 /* TandemBolusReleaseIntegrationTests.swift */; };
 		C222DDD1A3CF1666A2FD407C /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDB32DFE119408889BAB63DC /* Message.swift */; };
+		CCE2AD7917FA4222DC672D55 /* TandemReconnectBackoffDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA5E38714574476BA9A7CF0 /* TandemReconnectBackoffDelegate.swift */; };
 		D0031FD9B5E6590E8A52BA28 /* HKDF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870C47D6B84EE67C1C31AE11 /* HKDF.swift */; };
 		D65710EDBD436B06DC8D0A23 /* TandemInProgressBolusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6782EE95CCD5935C120CFC25 /* TandemInProgressBolusTests.swift */; };
 		E1BAA62AD9AB624D29CE8027 /* TandemKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96D7D617AC083C7ABCBB8FED /* TandemKit.framework */; };
@@ -200,8 +202,10 @@
 		00F8F05C41C9E11A908FA571 /* WireCaptureModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireCaptureModel.swift; sourceTree = "<group>"; };
 		0499F5E89630143C0D6D0933 /* TandemBasalScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemBasalScheduleTests.swift; sourceTree = "<group>"; };
 		0791ACE78EFA1D76A5D27228 /* SecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretStore.swift; sourceTree = "<group>"; };
+		0DA5E38714574476BA9A7CF0 /* TandemReconnectBackoffDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemReconnectBackoffDelegate.swift; sourceTree = "<group>"; };
 		0F7D6FEF165CCE65685E2C0F /* PacketFramerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketFramerTests.swift; sourceTree = "<group>"; };
 		15A6319F34E0171301667769 /* TandemSendSerializationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemSendSerializationTests.swift; sourceTree = "<group>"; };
+		1667AB78F304ECA31039E256 /* TandemReconnectBackoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemReconnectBackoffTests.swift; sourceTree = "<group>"; };
 		19DB2695FF11872F61F459D3 /* CRC16Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CRC16Tests.swift; sourceTree = "<group>"; };
 		1BD325085E3D9918C9A7C36A /* TandemAuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemAuthState.swift; sourceTree = "<group>"; };
 		1BF6CC38058B0C112393CEA6 /* PacketFramer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketFramer.swift; sourceTree = "<group>"; };
@@ -463,6 +467,8 @@
 				F879ED27B82EFC91E78FB714 /* TandemPumpManagerStatusNotifyTests.swift */,
 				D33FAD7B59D3985846872921 /* TandemPumpStatePersistenceTests.swift */,
 				DA154AFA9030773D71041F45 /* TandemPumpStateSecretMigrationTests.swift */,
+				0DA5E38714574476BA9A7CF0 /* TandemReconnectBackoffDelegate.swift */,
+				1667AB78F304ECA31039E256 /* TandemReconnectBackoffTests.swift */,
 				15A6319F34E0171301667769 /* TandemSendSerializationTests.swift */,
 				304EA24E4D4D5652C6D6EB6B /* TandemTempRateCeilingIntegrationTests.swift */,
 			);
@@ -800,6 +806,8 @@
 				290D78EB1B798C59A2594404 /* TandemPumpManagerStatusNotifyTests.swift in Sources */,
 				A39E21506DFF1C7E40F21A4C /* TandemPumpStatePersistenceTests.swift in Sources */,
 				1018061F4520648ECED60AB6 /* TandemPumpStateSecretMigrationTests.swift in Sources */,
+				CCE2AD7917FA4222DC672D55 /* TandemReconnectBackoffDelegate.swift in Sources */,
+				3EB106EA9FB11C37150120A2 /* TandemReconnectBackoffTests.swift in Sources */,
 				625EABBDC1360217BF1E22FB /* TandemSendSerializationTests.swift in Sources */,
 				95E7D60054E208B9C526D138 /* TandemTempRateCeilingIntegrationTests.swift in Sources */,
 			);

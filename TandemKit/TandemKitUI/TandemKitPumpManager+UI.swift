@@ -55,7 +55,20 @@ extension TandemPumpManager: PumpManagerUI {
 
     // MARK: - PumpStatusIndicator
 
-    public var pumpStatusHighlight: DeviceStatusHighlight? { nil }
+    // WP6/M5: surface the bounded-reconnect terminal state. When auto-reconnect
+    // exhausts its retry ceiling without re-authenticating, the pump manager sets
+    // state.pumpUnreachable; Loop renders this critical highlight instead of the
+    // driver silently retrying forever. Cleared on the next successful auth.
+    // "Signal Loss" matches the wording OmnipodKit uses for its comparable
+    // not-heard-from-recently condition.
+    public var pumpStatusHighlight: DeviceStatusHighlight? {
+        guard state.pumpUnreachable else { return nil }
+        return PumpStatusHighlight(
+            localizedMessage: LocalizedString("Signal Loss", comment: "Status highlight when auto-reconnect to the Tandem pump has exhausted its retry ceiling."),
+            imageName: "exclamationmark.circle.fill",
+            state: .critical
+        )
+    }
     public var pumpLifecycleProgress: DeviceLifecycleProgress? { nil }
     public var pumpStatusBadge: DeviceStatusBadge? { nil }
 }

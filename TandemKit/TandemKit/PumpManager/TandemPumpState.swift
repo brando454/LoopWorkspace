@@ -86,6 +86,12 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
     public var authKey: Data?
     public var pumpTimeSinceReset: UInt32 = 0
 
+    // WP6/M5: set true when bounded auto-reconnect exhausts its retry ceiling
+    // without re-authenticating. Surfaced to Loop as a critical "Signal Loss"
+    // pumpStatusHighlight. Cleared on the next successful auth. Transient
+    // runtime state — never persisted to rawValue.
+    public var pumpUnreachable: Bool = false
+
     // MARK: - Init
 
     public init(basalRateSchedule: BasalRateSchedule?) {

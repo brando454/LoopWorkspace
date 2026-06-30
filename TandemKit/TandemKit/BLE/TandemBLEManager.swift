@@ -5,6 +5,30 @@ import os.log
 
 // Central BLE manager for the Tandem Mobi.
 // Owns the CBCentralManager and creates TandemPeripheralManager on connect.
+// WP6/M5: pure, radio-free backoff policy. Given a zero-based attempt index it
+// returns either the delay before the next reconnect or .ceiling once the
+// attempt budget is spent. Extracted from TandemBLEManager so the
+// attempt/delay/ceiling logic is unit-testable without a live CBCentralManager
+// (offline tests inject a nil central, which would otherwise short-circuit the
+// scheduling path before any of this logic runs).
+struct ReconnectBackoff: Equatable {
+    let baseDelay: TimeInterval
+    let maxDelay: TimeInterval
+    let maxAttempts: Int
+
+    enum Decision: Equatable {
+        case retry(TimeInterval)
+        case ceiling
+    }
+
+    // attempt is zero-based: 0 is the first reconnect after a disconnect.
+    func decision(forAttempt attempt: Int) -> Decision {
+        guard attempt < maxAttempts else { return .ceiling }
+        let uncapped = baseDelay * pow(2.0, Double(attempt))
+        return .retry(min(uncapped, maxDelay))
+    }
+}
+
 final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sendable {
 
     weak var pumpManager: TandemPumpManager?
@@ -52,6 +76,29 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
     private var pendingScanOnPowerOn = false
     private var powerOnWatchdog: DispatchWorkItem?
     private let powerOnTimeout: TimeInterval = 5.0
+
+    // WP6/M5: bounded auto-reconnect with exponential backoff.
+    //
+    // The pre-M5 disconnect handler called central.connect(peripheral)
+    // immediately and unconditionally. CoreBluetooth holds a pending connect
+    // open with no timeout, so an out-of-range pump is paced by the radio and
+    // does not spin. But a pump that links and then drops faster than EC-JPAKE
+    // auth can complete — e.g. a bonding/encryption rejection surfaced as a
+    // CBError — produces a tight connect→disconnect cycle CoreBluetooth does
+    // NOT pace, because each cycle establishes a brief link. That is the spin
+    // TK-M5 flags. We replace the immediate reconnect with a scheduled one whose
+    // delay grows per consecutive failed attempt, and we stop after a ceiling so
+    // an unrecoverable link surfaces to the user instead of retrying forever.
+    //
+    // The counter resets ONLY on authenticationCompleted() — full auth, not bare
+    // BLE link-up — so a link-up/auth-fail oscillation still advances toward the
+    // ceiling rather than resetting each cycle. All five fields are touched only
+    // on managerQueue.
+    private var reconnectAttempt = 0
+    private var reconnectWork: DispatchWorkItem?
+    // 2s base, doubling, capped at 60s, 8 attempts: 2,4,8,16,32,60,60,60 then
+    // ceiling (~4 min before the pump is marked unreachable).
+    private let reconnectBackoff = ReconnectBackoff(baseDelay: 2.0, maxDelay: 60.0, maxAttempts: 8)
 
     convenience init(pumpManager: TandemPumpManager) {
         self.init(pumpManager: pumpManager, centralFactory: TandemBLEManager.liveCentralFactory)
@@ -151,9 +198,53 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
         pendingScanOnPowerOn = false
         powerOnWatchdog?.cancel()
         powerOnWatchdog = nil
+        // WP6/M5: full auth is the only event that clears the reconnect budget.
+        // Cancel any pending scheduled reconnect, zero the attempt counter, and
+        // clear the terminal "unreachable" flag the ceiling may have set so the
+        // Signal Loss highlight drops once we are talking to the pump again.
+        cancelReconnect()
+        reconnectAttempt = 0
+        pumpManager?.setPumpUnreachable(false)
         guard let completion = connectCompletion else { return }
         connectCompletion = nil
         completion(nil)
+    }
+
+    // WP6/M5: schedule the next auto-reconnect with exponential backoff, or stop
+    // at the ceiling. Runs on managerQueue (the centrals delegate queue), and
+    // arms its DispatchWorkItem on the same queue, mirroring armPowerOnWatchdog.
+    // Factored out so offline tests (which inject a nil central) can drive the
+    // attempt/delay/ceiling logic without a live radio.
+    private func scheduleReconnect() {
+        guard let central, let peripheral else { return }
+
+        switch reconnectBackoff.decision(forAttempt: reconnectAttempt) {
+        case .ceiling:
+            // Ceiling reached. Stop the spin and surface a terminal comms state
+            // so Loop renders the pump as unreachable rather than silently
+            // retrying forever. authenticationCompleted() clears this on the next
+            // successful auth; an explicit ensureConnected() call also restarts
+            // the cycle via central.connect.
+            logger.error("Reconnect ceiling (\(self.reconnectBackoff.maxAttempts)) reached; marking pump unreachable")
+            cancelReconnect()
+            pumpManager?.setPumpUnreachable(true)
+
+        case .retry(let delay):
+            reconnectAttempt += 1
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, let central = self.central, let peripheral = self.peripheral else { return }
+                self.reconnectWork = nil
+                central.connect(peripheral)
+            }
+            reconnectWork = work
+            managerQueue.asyncAfter(deadline: .now() + delay, execute: work)
+        }
+    }
+
+    // WP6/M5: cancel any pending scheduled reconnect. Idempotent.
+    private func cancelReconnect() {
+        reconnectWork?.cancel()
+        reconnectWork = nil
     }
 
     private func ensureConnected(_ completion: @escaping (Error?) -> Void) {
@@ -162,6 +253,11 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
             completion(TandemBLEError.bluetoothNotAvailable)
             return
         }
+        // WP6/M5: an explicit connect request supersedes any pending scheduled
+        // backoff reconnect so the two cannot issue overlapping central.connect
+        // calls. The attempt counter is intentionally NOT reset here — only a
+        // successful auth (authenticationCompleted) clears the budget.
+        cancelReconnect()
         // Require both BLE link AND completed auth before calling completion.
         if let p = peripheral, p.state == .connected,
            pumpManager?.state.connectionState == .connected {
@@ -310,11 +406,17 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
         pumpManager?.updateState { $0.connectionState = .disconnected }
 
         if let completion = connectCompletion {
+            // An explicit ensureConnected() is in flight: fail it and let the
+            // caller decide. Drop any pending scheduled reconnect so the two
+            // paths cannot race.
+            cancelReconnect()
             connectCompletion = nil
             completion(error)
         } else {
-            // Auto-reconnect
-            central.connect(peripheral)
+            // WP6/M5: bounded auto-reconnect. Schedule with backoff instead of an
+            // immediate central.connect; at the ceiling this stops and marks the
+            // pump unreachable.
+            scheduleReconnect()
         }
     }
 
