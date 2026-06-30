@@ -31,6 +31,7 @@ enum TandemCharacteristicUUID {
 
     // Device Information Service
     static let modelNumber      = CBUUID(string: "00002A24-0000-1000-8000-00805F9B34FB")
+    static let serialNumber     = CBUUID(string: "00002A25-0000-1000-8000-00805F9B34FB")
     static let manufacturerName = CBUUID(string: "00002A29-0000-1000-8000-00805F9B34FB")
 
     // Characteristics we subscribe to on connect, best-effort. A given pump

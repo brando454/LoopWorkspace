@@ -194,6 +194,9 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
             if let modelChar = characteristics[TandemCharacteristicUUID.modelNumber] {
                 peripheral.readValue(for: modelChar)
             }
+            if let serialChar = characteristics[TandemCharacteristicUUID.serialNumber] {
+                peripheral.readValue(for: serialChar)
+            }
             servicesDiscovered = true
             checkInitializationComplete()
         }
@@ -229,7 +232,58 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard error == nil, let data = characteristic.value else { return }
+
+        // Device Information Service characteristics are plain GATT string reads
+        // (raw UTF-8, no Tandem [packetsRemaining][transactionId] framing). They
+        // MUST NOT flow into receive(data:on:), which would mis-read the first
+        // byte as packetsRemaining and either buffer forever or drop the value.
+        // The decode decision is a pure function (TandemPeripheralManager
+        // .decodeDISValue) so it is unit-testable without a CBCharacteristic,
+        // which has no public initializer. Model is captured-and-logged only (no
+        // state field yet, by decision); serial is persisted into pumpSerialNumber.
+        let hex = data.map { String(format: "%02X", $0) }.joined()
+        switch TandemPeripheralManager.decodeDISValue(uuid: characteristic.uuid, data: data) {
+        case .serial(let serial):
+            logger.info("DIS serial (0x2A25) raw=\(hex) utf8=\(serial)")
+            pumpManager?.updateState { $0.pumpSerialNumber = serial }
+            return
+        case .serialUndecodable:
+            logger.info("DIS serial (0x2A25) raw=\(hex) utf8=<empty-or-non-utf8; not stored>")
+            return
+        case .model(let model):
+            logger.info("DIS model (0x2A24) raw=\(hex) utf8=\(model ?? "<non-utf8>")")
+            return
+        case .passthrough:
+            break
+        }
+
         receive(data: data, on: characteristic.uuid)
+    }
+
+    /// Pure decode decision for inbound Device Information Service reads, factored
+    /// out of the delegate so it is testable without a CBCharacteristic (which has
+    /// no public initializer). Serial (0x2A25) is decoded as UTF-8 and accepted
+    /// only when non-empty; model (0x2A24) is decoded for logging but never stored;
+    /// every other characteristic passes through to the Tandem framing path.
+    enum DISReadResult: Equatable {
+        case serial(String)
+        case serialUndecodable
+        case model(String?)
+        case passthrough
+    }
+
+    static func decodeDISValue(uuid: CBUUID, data: Data) -> DISReadResult {
+        switch uuid {
+        case TandemCharacteristicUUID.serialNumber:
+            if let s = String(data: data, encoding: .utf8), !s.isEmpty {
+                return .serial(s)
+            }
+            return .serialUndecodable
+        case TandemCharacteristicUUID.modelNumber:
+            return .model(String(data: data, encoding: .utf8))
+        default:
+            return .passthrough
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
