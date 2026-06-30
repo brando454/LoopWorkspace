@@ -13,11 +13,12 @@ import Foundation
 //
 // Source revision: jwoglom/pumpX2 @ 9bfc6691a463e783ac55067dd3eeffb76be8b0f7
 //
-// IMPORTANT — two of these tests currently FAIL on purpose. They encode the
-// CORRECT pump bytes; TandemKit's InitiateBolusRequest convenience initializer
-// encodes the wrong ones (foodVolume duplicates total; bolusTypeBitmask is 0 not
-// 8). The failing tests are the regression guard for fixing that initializer.
-// See `testInitiateBolusRequest_1u_PINS_KNOWN_ENCODER_BUGS`.
+// NOTE — the InitiateBolusRequest encoder bug this file once guarded against is
+// FIXED. The convenience initializer formerly double-booked the dose (foodVolume
+// duplicated total) and set bolusTypeBitmask to 0 instead of 8; both are
+// corrected. The bolus tests below now PASS against the pumpX2 device-captured
+// cargo and stand as the landed regression guard — do not relax them.
+// See `testInitiateBolusRequest_1u_matchesPumpX2Capture`.
 
 final class TandemMessageVectorTests: XCTestCase {
 
