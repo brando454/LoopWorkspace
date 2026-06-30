@@ -508,6 +508,15 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                                                           responseType: CurrentBatteryV2Response.self)
                 let bolusData   = try await sendAndReceive(CurrentBolusStatusRequest(),
                                                           responseType: CurrentBolusStatusResponse.self)
+                // WP6/M3+M6: parse once and capture liveness + requested volume
+                // before the state mutation nils the active-bolus anchor, so we can
+                // report in-progress / finalize progress after the updateState block.
+                let bolusResp = CurrentBolusStatusResponse(cargo: bolusData)
+                let bolusActive = bolusResp?.hasActiveBolus ?? false
+                // Live delivering vs requesting: the durable state collapses both into
+                // .inProgress, so the time estimate must read the wire status here.
+                let bolusDelivering = bolusResp?.deliveryStatus == .delivering
+                let bolusRequestedUnits = bolusResp.map { Double($0.requestedVolumeMU) / 1000.0 }
                 pm.updateState { state in
                     if let r = InsulinStatusResponse(cargo: insulinData) {
                         state.reservoirUnits = Double(r.currentUnits)
@@ -531,6 +540,16 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                     state.lastSync = Date()
                 }
                 completion(nil)
+
+                // WP6/M3+M6: after the state mutation, surface the in-progress bolus.
+                // While delivering, emit a mutable in-progress DoseEntry and push
+                // time-estimated live progress (every poll, by design). When idle,
+                // settle the progress reporter at 100%. Best-effort: never fails poll.
+                if bolusActive {
+                    pm.reportInProgressBolus(delivering: bolusDelivering)
+                } else {
+                    pm.finalizeInProgressBolusProgress(requestedUnits: bolusRequestedUnits)
+                }
 
                 // TK-H3/TK-C1: reconcile the most recently completed bolus into Loop.
                 // Best-effort: a LastBolusStatus failure must not fail the status poll,

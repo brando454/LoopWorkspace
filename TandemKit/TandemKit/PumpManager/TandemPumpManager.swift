@@ -69,6 +69,21 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
     // force-unwrap in the notify path is always safe. Read/written only on
     // stateQueue.
     private var lastNotifiedStatus: PumpManagerStatus!
+
+    // WP6/M3+M6: weak handle to the dose-progress reporter LoopKit currently owns
+    // (vended by createBolusProgressReporter). Weak so LoopKit controls lifetime;
+    // when it releases the reporter this goes nil and progress updates no-op. The
+    // status poll pushes time-estimated progress through this handle.
+    private weak var bolusProgressReporter: TandemDoseProgressReporter?
+
+    // WP6/M6: one-shot finalize guard. The status poll nils the active-bolus
+    // anchor on every idle cycle, so finalize must fire exactly once on the
+    // delivering->idle edge, not on every subsequent idle poll. Tracked on
+    // stateQueue alongside lastInProgressRequestedUnits, which retains the last
+    // requested volume so the final 100% push carries a coherent value even
+    // though state.activeBolusUnits is already nil by finalize time.
+    private var bolusWasActiveLastPoll = false
+    private var lastInProgressRequestedUnits: Double = 0
     private let logger = Logger(subsystem: "com.loopandlearn.TandemKit", category: "TandemPumpManager")
     private var bleManager: TandemBLEManager?
 
@@ -223,10 +238,89 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
         }
     }
 
+    // WP6/M3+M6: nominal Tandem delivery rate used to time-estimate delivered-so-far.
+    // CurrentBolusStatus has no delivered field, so live progress is estimated and
+    // later superseded by the pump-confirmed completed reconcile.
+    private static let nominalBolusRateUnitsPerSec = 1.5 / 60.0
+
+    // Compute the time-estimated delivered-so-far and percent for the currently
+    // active bolus, from durable state. MUST be called on stateQueue. Returns nil
+    // when there is no usable active-bolus anchor.
+    //
+    // `delivering` MUST be supplied by the caller from the LIVE wire status
+    // (CurrentBolusStatusResponse.deliveryStatus == .delivering). The durable
+    // TandemBolusState enum collapses the wire .delivering and .requesting cases
+    // into a single .inProgress, so state alone cannot distinguish them. During
+    // .requesting (bolus accepted, no insulin flowing yet) the caller passes
+    // delivering=false and this returns zero progress.
+    private func estimatedInProgressDeliveryLocked(delivering: Bool, now: Date = Date())
+        -> (deliveredSoFar: Double, requested: Double, percent: Double, startDate: Date, bolusId: UInt16)? {
+        guard let bolusId = state.activeBolusId,
+              let requested = state.activeBolusUnits,
+              let start = state.activeBolusStartDate else { return nil }
+        let elapsed = max(0, now.timeIntervalSince(start))
+        let raw = delivering ? elapsed * TandemPumpManager.nominalBolusRateUnitsPerSec : 0
+        let deliveredSoFar = min(requested, max(0, raw))
+        let percent = requested > 0 ? (deliveredSoFar / requested) : 0
+        return (deliveredSoFar, requested, percent, start, bolusId)
+    }
+
+    // WP6/M3: emit a MUTABLE in-progress bolus DoseEntry to Loop and push the same
+    // estimate to the dose-progress reporter. Fires every poll while a bolus is
+    // active — by design: the event is mutable and keyed on bolusSyncIdentifier,
+    // so each report UPDATES the one entry, and the immutable completed reconcile
+    // (same raw key) replaces it at the end. Does NOT advance lastReportedBolusId.
+    func reportInProgressBolus(delivering: Bool, completion: (() -> Void)? = nil) {
+        stateQueue.async { [weak self] in
+            guard let self else { completion?(); return }
+            guard let est = self.estimatedInProgressDeliveryLocked(delivering: delivering) else { completion?(); return }
+
+            // Mark active so the next idle poll finalizes exactly once, and retain
+            // the requested volume for that final 100% push.
+            self.bolusWasActiveLastPoll = true
+            self.lastInProgressRequestedUnits = est.requested
+
+            // Push live progress on the reporter own queue (reporter hops internally).
+            self.bolusProgressReporter?.update(deliveredUnits: est.deliveredSoFar,
+                                               percentComplete: est.percent)
+
+            let reporter = TandemDoseReporter(lastReportedBolusId: self.state.lastReportedBolusId)
+            reporter.delegate = self
+            let event = reporter.makeInProgressBolusEvent(bolusId: est.bolusId,
+                                                          requestedUnits: est.requested,
+                                                          deliveredSoFar: est.deliveredSoFar,
+                                                          startDate: est.startDate,
+                                                          insulinType: self.state.insulinType)
+            // In-progress: no pump-confirmed reconciliation time yet, so nil.
+            reporter.report(events: [event], lastReconciliation: nil) { _ in completion?() }
+        }
+    }
+
+    // WP6/M6: on bolus completion or idle, push a single final 100% to the
+    // progress reporter so the UI settles, using the last known requested volume.
+    // The authoritative delivered amount still comes from the completed reconcile.
+    func finalizeInProgressBolusProgress(requestedUnits: Double? = nil) {
+        stateQueue.async { [weak self] in
+            guard let self else { return }
+            // Fire exactly once, on the delivering->idle edge. Subsequent idle
+            // polls no-op so we do not re-notify the observer every cycle.
+            guard self.bolusWasActiveLastPoll else { return }
+            self.bolusWasActiveLastPoll = false
+            // state.activeBolusUnits is nil by now, so settle at the requested
+            // volume supplied by the poll, falling back to the last in-progress
+            // requested volume we cached while delivering.
+            let requested = requestedUnits ?? self.lastInProgressRequestedUnits
+            self.bolusProgressReporter?.update(deliveredUnits: requested, percentComplete: 1.0)
+        }
+    }
+
     // MARK: - Bolus
 
     public func createBolusProgressReporter(reportingOn dispatchQueue: DispatchQueue) -> DoseProgressReporter? {
-        TandemDoseProgressReporter(pumpManager: self, queue: dispatchQueue)
+        let reporter = TandemDoseProgressReporter(pumpManager: self, queue: dispatchQueue)
+        // WP6/M6: keep a weak handle so the status poll can push live progress.
+        bolusProgressReporter = reporter
+        return reporter
     }
 
     public func estimatedDuration(toBolus units: Double) -> TimeInterval {

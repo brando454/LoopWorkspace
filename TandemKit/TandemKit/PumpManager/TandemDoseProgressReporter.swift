@@ -23,4 +23,17 @@ final class TandemDoseProgressReporter: DoseProgressReporter {
             self.observer = nil
         }
     }
+
+    // WP6/M3+M6: push a new progress value and notify the observer. Called from
+    // the status poll with a TIME-ESTIMATED deliveredUnits, because
+    // CurrentBolusStatus carries no delivered-so-far field; the estimate is
+    // superseded by the pump-confirmed completed reconcile. The observer MUST be
+    // notified on this reporter own queue (the dispatchQueue LoopKit passed to
+    // createBolusProgressReporter), never on the pump manager stateQueue.
+    func update(deliveredUnits: Double, percentComplete: Double) {
+        queue.async {
+            self.progress = DoseProgress(deliveredUnits: deliveredUnits, percentComplete: percentComplete)
+            self.observer?.doseProgressReporterDidUpdate(self)
+        }
+    }
 }
