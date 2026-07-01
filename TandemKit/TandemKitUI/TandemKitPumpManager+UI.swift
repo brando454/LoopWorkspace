@@ -64,7 +64,7 @@ extension TandemPumpManager: PumpManagerUI {
     public var pumpStatusHighlight: DeviceStatusHighlight? {
         guard state.pumpUnreachable else { return nil }
         return PumpStatusHighlight(
-            localizedMessage: LocalizedString("Signal Loss", comment: "Status highlight when auto-reconnect to the Tandem pump has exhausted its retry ceiling."),
+            localizedMessage: NSLocalizedString("Signal Loss", comment: "Status highlight when auto-reconnect to the Tandem pump has exhausted its retry ceiling."),
             imageName: "exclamationmark.circle.fill",
             state: .critical
         )
