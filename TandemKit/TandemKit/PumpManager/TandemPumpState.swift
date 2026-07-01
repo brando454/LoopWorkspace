@@ -81,6 +81,13 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
     // would re-emit completed boluses after relaunch, inflating IOB.
     public var lastReportedBolusId: UInt16
 
+    // Highest history-log sequence number already processed by the events-only
+    // history-log reconcile (suspend/resume boundaries). Persisted so events are
+    // not re-reported after app restarts. 0 means "never seeded": on the first
+    // reconcile the watermark is set to the pump's lastSequenceNum WITHOUT
+    // reporting, so pre-pairing pump history is never replayed into Loop.
+    public var lastHistoryLogSequenceNum: UInt32
+
     // Delivery limits
     public var maximumBasalRateUnitsPerHour: Double
     public var maximumBolusUnits: Double
@@ -136,6 +143,7 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
         activeBolusUnits = nil
         activeBolusStartDate = nil
         lastReportedBolusId = 0
+        lastHistoryLogSequenceNum = 0
         maximumBasalRateUnitsPerHour = 15
         maximumBolusUnits = 25
         self.basalRateSchedule = basalRateSchedule
@@ -170,6 +178,7 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
         activeBolusUnits         = rawValue["activeBolusUnits"] as? Double
         activeBolusStartDate     = rawValue["activeBolusStartDate"] as? Date
         lastReportedBolusId      = rawValue["lastReportedBolusId"] as? UInt16 ?? 0
+        lastHistoryLogSequenceNum = rawValue["lastHistoryLogSequenceNum"] as? UInt32 ?? 0
         maximumBasalRateUnitsPerHour = rawValue["maximumBasalRateUnitsPerHour"] as? Double ?? 15
         maximumBolusUnits        = rawValue["maximumBolusUnits"] as? Double ?? 25
 
@@ -200,6 +209,7 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
         v["activeBolusUnits"]     = activeBolusUnits
         v["activeBolusStartDate"] = activeBolusStartDate
         v["lastReportedBolusId"]  = lastReportedBolusId
+        v["lastHistoryLogSequenceNum"] = lastHistoryLogSequenceNum
         v["maximumBasalRateUnitsPerHour"] = maximumBasalRateUnitsPerHour
         v["maximumBolusUnits"]    = maximumBolusUnits
         v["basalRateSchedule"]    = basalRateSchedule?.rawValue

@@ -460,19 +460,29 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
         }
     }
 
-    // TODO(WP2-followup): wire suspend/resume boundary markers off the pump
-    // QualifyingEventMask (pumpSuspend bit 6 / pumpResume bit 7, defined in
-    // StatusMessages.swift). As of WP2 that mask is ONLY a type definition with no
-    // runtime consumer: nothing in the connection or notification flow decodes live
-    // pump event bits, so there is no signal to drive suspend/resume from. Wiring
-    // this up requires (1) a message or BLE notification that delivers the
-    // qualifying-event bitmask at runtime, and (2) a subscriber that decodes
-    // pumpSuspend/pumpResume and calls this with the pump-confirmed boundary time.
-    // Note: suspendDelivery is implemented as a 72h 0% temp rate, so a genuine
-    // suspend and a real 0% temp basal are indistinguishable to the reporter
-    // without these event bits \u2014 which is why this is stubbed, not approximated.
-    func reportSuspendResume(suspended: Bool, at date: Date) {
-        // Intentionally unimplemented \u2014 see TODO(WP2-followup) above.
+    // Suspend/resume boundary markers, driven by the history-log reconcile
+    // (PumpingSuspended typeId 11 / PumpingResumed typeId 12), which supplies the
+    // pump-confirmed boundary time \u2014 a better signal than the QualifyingEventMask
+    // bits the old WP2 TODO contemplated, because the history entry carries the
+    // authoritative pump timestamp rather than a phone-observed notification time.
+    // The completion reports the delegate outcome so the caller (the history-log
+    // reconcile) can gate its sequence-number watermark on confirmed delivery,
+    // mirroring the TK-C1 confirm-before-persist semantics.
+    func reportSuspendResume(suspended: Bool, at date: Date, completion: ((Error?) -> Void)? = nil) {
+        stateQueue.async { [weak self] in
+            guard let self else { completion?(nil); return }
+            // Per-cycle reporter, same construction pattern as reportCompletedBolus;
+            // the bolus watermark seed is irrelevant to suspend/resume events.
+            let reporter = TandemDoseReporter(lastReportedBolusId: self.state.lastReportedBolusId)
+            reporter.delegate = self
+            let event = suspended ? reporter.makeSuspendEvent(at: date)
+                                  : reporter.makeResumeEvent(at: date)
+            // lastReconciliation = the pump-confirmed boundary time from the
+            // history entry, never phone poll time.
+            reporter.report(events: [event], lastReconciliation: date) { error in
+                completion?(error)
+            }
+        }
     }
 
     // MARK: - Helpers

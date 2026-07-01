@@ -43,6 +43,7 @@
 		57C0A3C75A654139D64D8DCD /* TandemDeliveryGateIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9FCAD90FA5C48FD9220A5D3 /* TandemDeliveryGateIntegrationTests.swift */; };
 		58FE5537D6E6A4790939D567 /* StatusMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD3003CFEB8118A810634AA5 /* StatusMessages.swift */; };
 		5ED1C754407408BAD2BB7CE0 /* ECJPAKEZKPTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3B1B5602EC706CC28E6EBAA /* ECJPAKEZKPTests.swift */; };
+		60A032BA973810393B30D85F /* TandemHistoryLogReconcileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E84E2718DA20082049013BAA /* TandemHistoryLogReconcileTests.swift */; };
 		625EABBDC1360217BF1E22FB /* TandemSendSerializationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15A6319F34E0171301667769 /* TandemSendSerializationTests.swift */; };
 		6DDA48EE66A1CC10D5A0621B /* TransactionID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2809D5F80CA0BC1CB2935A83 /* TransactionID.swift */; };
 		7284E08852E45320DC8065D6 /* TandemDISDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A77D67F9D48B0AED9F603626 /* TandemDISDecodeTests.swift */; };
@@ -285,6 +286,7 @@
 		DE3128613CD96F34670A8484 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		E0AC46C3DC5DA7C3288B37A3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		E57E0FFF6471B896D7987746 /* TandemMessageVectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemMessageVectorTests.swift; sourceTree = "<group>"; };
+		E84E2718DA20082049013BAA /* TandemHistoryLogReconcileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemHistoryLogReconcileTests.swift; sourceTree = "<group>"; };
 		F879ED27B82EFC91E78FB714 /* TandemPumpManagerStatusNotifyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemPumpManagerStatusNotifyTests.swift; sourceTree = "<group>"; };
 		FA696B2EA7F0D585F0489D5E /* TandemPeripheral.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TandemPeripheral.swift; sourceTree = "<group>"; };
 		FD3003CFEB8118A810634AA5 /* StatusMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusMessages.swift; sourceTree = "<group>"; };
@@ -483,6 +485,7 @@
 				9705132EC8A390B413F14096 /* TandemDoseReporterTests.swift */,
 				246C553D33FB0966BFE19111 /* TandemHistoryLogDecodeTests.swift */,
 				85860D5D5A63177372318F5F /* TandemHistoryLogEventTests.swift */,
+				E84E2718DA20082049013BAA /* TandemHistoryLogReconcileTests.swift */,
 				6782EE95CCD5935C120CFC25 /* TandemInProgressBolusTests.swift */,
 				C49F1262107DC7DB2EDB3000 /* TandemKDFConfirmationTests.swift */,
 				E57E0FFF6471B896D7987746 /* TandemMessageVectorTests.swift */,
@@ -834,6 +837,7 @@
 				7739B6697215074F6836084D /* TandemDoseReporterTests.swift in Sources */,
 				F7465897F0C5CBE47FE682D2 /* TandemHistoryLogDecodeTests.swift in Sources */,
 				E2E199A8B98291CB2EF8BE13 /* TandemHistoryLogEventTests.swift in Sources */,
+				60A032BA973810393B30D85F /* TandemHistoryLogReconcileTests.swift in Sources */,
 				D65710EDBD436B06DC8D0A23 /* TandemInProgressBolusTests.swift in Sources */,
 				0F4837BBC7C976513AC82811 /* TandemKDFConfirmationTests.swift in Sources */,
 				77B04A81275D919BE3979B22 /* TandemMessageVectorTests.swift in Sources */,

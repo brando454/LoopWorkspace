@@ -706,8 +706,125 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                    let tempResp = TempRateStatusResponse(cargo: tempData) {
                     pm.reportActiveTempBasal(from: tempResp)
                 }
+
+                // History-log reconcile (events-only: suspend/resume boundaries).
+                // Best-effort and non-throwing; runs after completion(nil) above,
+                // so its latency never delays the poll result Loop is waiting on.
+                await self.reconcileHistoryLog()
             } catch {
                 completion(error)
+            }
+        }
+    }
+
+    // MARK: - History-log reconciliation (events-only)
+
+    // Batch size per poll. A gap larger than this simply continues next poll from
+    // the advanced watermark, keeping each poll's history traffic bounded.
+    private static let historyLogBatchLimit: UInt32 = 30
+
+    // Events-only history-log reconcile: reports suspend/resume boundaries into
+    // Loop from PumpingSuspended/PumpingResumed entries. Boluses stay on the
+    // LastBolusStatusV2 reconcile path (its bolusId watermark) BY DESIGN — the
+    // history-log bolusCompleted events describe the same boluses, and reporting
+    // both would double-count IOB. Temp-rate events are decoded but not reported
+    // (TK-H3 already reports the live temp rate each poll).
+    //
+    // Watermark semantics mirror TK-C1 confirm-before-persist: the persisted
+    // lastHistoryLogSequenceNum advances past an entry only after its report is
+    // confirmed by the delegate (or the entry needs no report); on a failure the
+    // reconcile stops and the same entries are re-fetched next poll. Sync
+    // identifiers on the events make re-reporting safe; under-reporting is not.
+    // A watermark of 0 means never-seeded: seed to the pump's lastSequenceNum
+    // without reporting, so pre-pairing history is not replayed into Loop.
+    func reconcileHistoryLog() async {
+        guard let pm = pumpManager else { return }
+        guard let statusData = try? await sendAndReceive(HistoryLogStatusRequest(),
+                                                         responseType: HistoryLogStatusResponse.self),
+              let status = HistoryLogStatusResponse(cargo: statusData) else { return }
+
+        var watermark = pm.state.lastHistoryLogSequenceNum
+        if watermark == 0 {
+            pm.updateState { $0.lastHistoryLogSequenceNum = status.lastSequenceNum }
+            return
+        }
+        guard status.lastSequenceNum > watermark else { return }
+
+        let gap = status.lastSequenceNum - watermark
+        let batch = UInt8(min(gap, TandemPeripheralManager.historyLogBatchLimit))
+        let entries = await collectHistoryLogBatch(startLog: watermark + 1, count: batch)
+
+        // Strict sequence order so the watermark can never skip an unprocessed
+        // entry; a duplicate or stale entry (<= watermark) is ignored.
+        for entry in entries.sorted(by: { $0.sequenceNum < $1.sequenceNum }) {
+            guard entry.sequenceNum > watermark else { continue }
+            switch HistoryLogEvent.decode(from: entry) {
+            case .pumpingSuspended:
+                guard await reportBoundary(suspended: true, at: entry.timestamp) else { return }
+            case .pumpingResumed:
+                guard await reportBoundary(suspended: false, at: entry.timestamp) else { return }
+            default:
+                break  // decoded but not reported (see header comment)
+            }
+            watermark = entry.sequenceNum
+            pm.updateState { $0.lastHistoryLogSequenceNum = entry.sequenceNum }
+        }
+    }
+
+    private func reportBoundary(suspended: Bool, at date: Date) async -> Bool {
+        guard let pm = pumpManager else { return false }
+        return await withCheckedContinuation { cont in
+            pm.reportSuspendResume(suspended: suspended, at: date) { error in
+                cont.resume(returning: error == nil)
+            }
+        }
+    }
+
+    // Request a batch and collect the unsolicited stream frames that answer it.
+    // The accumulator is installed on the seam BEFORE the request is sent so no
+    // frame can race past; only one fetch is ever in flight (the poll path is
+    // serialized), so no streamId demux is needed — stale frames are excluded by
+    // the sequence-number guard in the caller. Resolves with whatever was
+    // collected when the expected count arrives, the ACK fails, or the timeout
+    // fires — never throws, never hangs.
+    private func collectHistoryLogBatch(startLog: UInt32, count: UInt8) async -> [HistoryLogEntry] {
+        await withCheckedContinuation { (cont: CheckedContinuation<[HistoryLogEntry], Never>) in
+            queue.async { [weak self] in
+                guard let self else { cont.resume(returning: []); return }
+                let resumed = ResumeGuard()
+                var collected: [HistoryLogEntry] = []
+
+                // All three closures below run on `queue` (dispatchResponse and
+                // asyncAfter both hop there), so `collected` is queue-confined.
+                self.historyLogStreamHandler = { [weak self] stream in
+                    collected.append(contentsOf: stream.entries)
+                    if collected.count >= Int(count) {
+                        self?.historyLogStreamHandler = nil
+                        if resumed.tryConsume() { cont.resume(returning: collected) }
+                    }
+                }
+
+                self.queue.asyncAfter(deadline: .now() + 5) { [weak self] in
+                    self?.historyLogStreamHandler = nil
+                    if resumed.tryConsume() { cont.resume(returning: collected) }
+                }
+
+                Task { [weak self] in
+                    guard let self else { return }
+                    let ackData = try? await self.sendAndReceive(
+                        HistoryLogRequest(startLog: startLog, numberOfLogs: count),
+                        responseType: HistoryLogResponse.self
+                    )
+                    let ack = ackData.flatMap { HistoryLogResponse(cargo: $0) }
+                    if ack?.isSuccess != true {
+                        // NACK or no ACK: no stream is coming; resolve now with
+                        // whatever (if anything) already arrived.
+                        self.queue.async {
+                            self.historyLogStreamHandler = nil
+                            if resumed.tryConsume() { cont.resume(returning: collected) }
+                        }
+                    }
+                }
             }
         }
     }
