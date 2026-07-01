@@ -448,7 +448,7 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                 transactionId: txId,
                 cargo: cargo,
                 authKey: authKey,
-                timeSinceReset: pumpManager?.state.pumpTimeSinceReset ?? 0
+                timeSinceReset: pumpManager?.state.estimatedPumpTimeSinceReset() ?? 0
             )
         } else {
             serialized = try PacketFramer.serialize(
@@ -588,9 +588,30 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
 
     // MARK: - High-level operations (called by TandemBLEManager)
 
+    // Refresh the pump-uptime bootstrap used to freshness-stamp signed CONTROL
+    // commands (see TimeSinceResetResponse / PacketFramer.serializeSigned). An
+    // unsigned status read, so it works before any signed command is valid.
+    // Best-effort: a failure leaves the prior estimate in place (which stays warm
+    // via elapsed-add), and a signed command with no estimate yet falls back to 0.
+    // Called at the top of each poll; the several unsigned round-trips that follow
+    // give the async state write time to land before the poll's first signed read.
+    private func refreshPumpTime() async {
+        guard let data = try? await sendAndReceive(TimeSinceResetRequest(),
+                                                   responseType: TimeSinceResetResponse.self),
+              let resp = TimeSinceResetResponse(cargo: data) else { return }
+        pumpManager?.updateState { state in
+            state.pumpTimeSinceResetAtRead = resp.pumpTimeSinceReset
+            state.pumpTimeSinceResetReadAt = Date()
+            state.pumpClockTime = resp.currentTime
+        }
+    }
+
     func fetchStatus(completion: @escaping (Error?) -> Void) {
         Task { [weak self] in
             guard let self, let pm = self.pumpManager else { return }
+            // Freshen the pump-uptime bootstrap before any signed request in this
+            // poll (the LastBolusStatusV2 reconcile below is signed).
+            await self.refreshPumpTime()
             do {
                 let insulinData = try await sendAndReceive(InsulinStatusRequest(),
                                                           responseType: InsulinStatusResponse.self)

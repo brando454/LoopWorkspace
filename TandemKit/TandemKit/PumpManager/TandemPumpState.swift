@@ -92,7 +92,20 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
 
     public var connectionState: TandemConnectionState = .disconnected
     public var authKey: Data?
-    public var pumpTimeSinceReset: UInt32 = 0
+
+    // Pump-uptime bootstrap for signing signed CONTROL commands, captured from
+    // TimeSinceResetResponse. We store the pump-reported uptime AND the local
+    // clock time we read it, then estimate the pump's CURRENT uptime as
+    // (reported + elapsed) at send time — see estimatedPumpTimeSinceReset(now:) —
+    // so a command issued minutes after the read still carries a fresh value.
+    // Re-read on each connect: a pump reset zeroes uptime, which would make a
+    // cached value plus elapsed badly wrong. nil until the first successful read.
+    // Runtime-only — never persisted (uptime must be re-read every connection).
+    public var pumpTimeSinceResetAtRead: UInt32?
+    public var pumpTimeSinceResetReadAt: Date?
+    // Pump wall clock (Jan-2008 epoch) from the last TimeSinceResetResponse.
+    // Captured for future clock-offset / time-sync; not yet consumed. Runtime-only.
+    public var pumpClockTime: Date?
 
     // WP6/M5: set true when bounded auto-reconnect exhausts its retry ceiling
     // without re-authenticating. Surfaced to Loop as a critical "Signal Loss"
@@ -194,6 +207,21 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
     }
 
     // MARK: - Computed
+
+    // Best estimate of the pump's CURRENT seconds-since-reset, for freshness-
+    // stamping signed CONTROL commands. Returns the last read value advanced by
+    // the wall-clock time elapsed since it was read (elapsed clamped to >= 0), or
+    // nil if no read has succeeded yet. `now` is injectable for deterministic
+    // tests. Saturates at UInt32.max rather than overflowing (unreachable in
+    // practice: ~136 years of uptime).
+    public func estimatedPumpTimeSinceReset(now: Date = Date()) -> UInt32? {
+        guard let base = pumpTimeSinceResetAtRead, let readAt = pumpTimeSinceResetReadAt else {
+            return nil
+        }
+        let elapsed = max(0, now.timeIntervalSince(readAt))
+        let sum = Double(base) + elapsed
+        return sum >= Double(UInt32.max) ? UInt32.max : UInt32(sum)
+    }
 
     public var basalDeliveryState: PumpManagerStatus.BasalDeliveryState {
         switch basalState {
