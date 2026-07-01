@@ -57,6 +57,25 @@ struct HistoryLogRequest: TandemRequest {
     }
 }
 
+// ACK for HistoryLogRequest: status (0 = success) plus the streamId that the
+// subsequent HistoryLogStreamResponse frames will carry, so a fetcher can match
+// pushed batches to the request that asked for them.
+struct HistoryLogResponse: TandemResponse {
+    static let opCode: UInt8 = 0x3D  // 61
+
+    let status: UInt8
+    let streamId: UInt8
+
+    var isSuccess: Bool { status == 0 }
+
+    init?(cargo: Data) {
+        guard cargo.count >= 2 else { return nil }
+        let b = Data(cargo)  // rebase to 0-based indices
+        status = b[0]
+        streamId = b[1]
+    }
+}
+
 // MARK: - Stream frames (unsolicited on the historyLog characteristic)
 
 // One 26-byte history-log entry. Only the common header is decoded here; the

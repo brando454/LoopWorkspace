@@ -63,6 +63,13 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         throw TandemBLEError.notConnected
     }
 
+    // Consumer for unsolicited history-log stream frames (0x81 on the historyLog
+    // characteristic), which the pump pushes after a HistoryLogRequest rather
+    // than pairing to a pending request. nil (the default) means parsed frames
+    // are dropped — the reconciliation fetcher installs a consumer when it runs.
+    // Invoked on `queue`, like every other inbound dispatch.
+    var historyLogStreamHandler: ((HistoryLogStreamResponse) -> Void)?
+
     // Receive buffer: accumulate chunks per characteristic
     private var receiveBuffers: [CBUUID: [Data]] = [:]
 
@@ -575,6 +582,20 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
             #else
             authResponseContinuation?.yield((opCode, cargo))
             #endif
+            return
+        }
+
+        // Unsolicited history-log stream frames: the pump pushes these after a
+        // HistoryLogRequest; no pending-table entry matches them (they answer no
+        // single request), so they are routed to the stream seam instead of
+        // falling through to pending.resolve as a silent no-op. An unparseable
+        // frame is dropped here — the framing layer (CRC + chunk sequencing)
+        // already vouched for transport integrity, so a parse failure means an
+        // envelope-count mismatch, which must not reach a consumer.
+        if uuid == TandemCharacteristicUUID.historyLog && opCode == HistoryLogStreamResponse.opCode {
+            if let stream = HistoryLogStreamResponse(cargo: cargo) {
+                historyLogStreamHandler?(stream)
+            }
             return
         }
 
