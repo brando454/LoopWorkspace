@@ -619,7 +619,13 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
     private func refreshPumpTime() async {
         guard let data = try? await sendAndReceive(TimeSinceResetRequest(),
                                                    responseType: TimeSinceResetResponse.self),
-              let resp = TimeSinceResetResponse(cargo: data) else { return }
+              let resp = TimeSinceResetResponse(cargo: data) else {
+            // Hardware-diagnostic visibility: a silent failure here means every
+            // signed command falls back to timeSinceReset=0.
+            logger.error("TimeSinceReset read FAILED; signed commands will carry stale/zero uptime")
+            return
+        }
+        logger.info("TimeSinceReset ok: uptime=\(resp.pumpTimeSinceReset)s pumpClock=\(String(describing: resp.currentTime))")
         pumpManager?.updateState { state in
             state.pumpTimeSinceResetAtRead = resp.pumpTimeSinceReset
             state.pumpTimeSinceResetReadAt = Date()
@@ -741,10 +747,14 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         guard let pm = pumpManager else { return }
         guard let statusData = try? await sendAndReceive(HistoryLogStatusRequest(),
                                                          responseType: HistoryLogStatusResponse.self),
-              let status = HistoryLogStatusResponse(cargo: statusData) else { return }
+              let status = HistoryLogStatusResponse(cargo: statusData) else {
+            logger.error("HistoryLogStatus read FAILED; history reconcile skipped this poll")
+            return
+        }
 
         var watermark = pm.state.lastHistoryLogSequenceNum
         if watermark == 0 {
+            logger.info("HistoryLog watermark seeded to \(status.lastSequenceNum) (range \(status.firstSequenceNum)-\(status.lastSequenceNum), \(status.numEntries) entries)")
             pm.updateState { $0.lastHistoryLogSequenceNum = status.lastSequenceNum }
             return
         }
