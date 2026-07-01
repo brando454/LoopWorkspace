@@ -741,6 +741,11 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         Task { [weak self] in
             guard let self else { return }
             var grantedBolusId: UInt16?
+            // TK-C6: once the InitiateBolus command is transmitted, a subsequent
+            // failure is UNCERTAIN — the pump may have begun delivering — so the
+            // outcome must be .uncertainDelivery, not .communication (which asserts
+            // nothing was delivered and would under-count IOB).
+            var initiateTransmitted = false
             do {
                 // Step 1: request permission and get bolusId
                 let permData = try await sendAndReceive(BolusPermissionRequest(),
@@ -760,9 +765,14 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                     completion(.configuration(nil))
                     return
                 }
+                // From here the initiate is on its way to the pump; a throw below
+                // is uncertain (see initiateTransmitted), not a clean failure.
+                initiateTransmitted = true
                 let initData = try await sendAndReceive(initiate,
                                                        responseType: InitiateBolusResponse.self)
                 guard let resp = InitiateBolusResponse(cargo: initData), resp.success else {
+                    // An explicit NACK is a CERTAIN non-delivery (the pump rejected
+                    // the initiate), so this stays .communication, not uncertain.
                     await self.releasePermission(perm.bolusId)
                     completion(.communication(nil))
                     return
@@ -791,7 +801,16 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                 if let grantedBolusId {
                     await self.releasePermission(grantedBolusId)
                 }
-                completion(.communication(error as? LocalizedError))
+                // TK-C6: a throw after the initiate was transmitted means the pump
+                // may have started delivering; report .uncertainDelivery so Loop
+                // treats IOB as unknown (the safe direction) and the next status
+                // poll reconciles the actual delivered amount. A throw before the
+                // initiate (e.g. the permission round-trip) is a clean comms failure.
+                if initiateTransmitted {
+                    completion(.uncertainDelivery)
+                } else {
+                    completion(.communication(error as? LocalizedError))
+                }
             }
         }
     }
