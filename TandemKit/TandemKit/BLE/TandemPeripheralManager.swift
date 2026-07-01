@@ -170,6 +170,23 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         guard error == nil else { return }
+        // Forward to the seam-testable core. CBPeripheral has no public initializer,
+        // so the delegate entry point cannot be invoked from an offline unit test.
+        // Routing the work through handleDiscoveredCharacteristics(for:peripheral:) —
+        // whose peripheral is the TandemPeripheral construction seam — lets a
+        // recording double drive the exact discovery/ordering logic. In production
+        // `peripheral` here is the same object CoreBluetooth set as our delegate,
+        // and CBPeripheral conforms to TandemPeripheral, so behavior is unchanged.
+        handleDiscoveredCharacteristics(for: service, peripheral: peripheral)
+    }
+
+    // Core of the characteristic-discovery callback, extracted so it can be driven
+    // offline through the TandemPeripheral seam (see the delegate method above).
+    // The DIS reads (0x2A24/0x2A25) live in the deviceInformation-service branch,
+    // NOT the TIP branch: DIS characteristics arrive on the separate 0x180A
+    // discovery callback, so issuing the reads from the TIP branch fired them
+    // before those characteristics were known and no read ever went out.
+    func handleDiscoveredCharacteristics(for service: CBService, peripheral: TandemPeripheral) {
         service.characteristics?.forEach { char in
             characteristics[char.uuid] = char
         }
@@ -191,14 +208,17 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
                     peripheral.setNotifyValue(true, for: char)
                 }
             }
+            servicesDiscovered = true
+            checkInitializationComplete()
+        }
+
+        if service.uuid == TandemServiceUUID.deviceInformation {
             if let modelChar = characteristics[TandemCharacteristicUUID.modelNumber] {
                 peripheral.readValue(for: modelChar)
             }
             if let serialChar = characteristics[TandemCharacteristicUUID.serialNumber] {
                 peripheral.readValue(for: serialChar)
             }
-            servicesDiscovered = true
-            checkInitializationComplete()
         }
     }
 
@@ -232,32 +252,48 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard error == nil, let data = characteristic.value else { return }
+        // Forward to the seam-testable core. CBCharacteristic has no public
+        // initializer, so passing (uuid, data) lets an offline unit test drive the
+        // DIS disposition logic directly.
+        handleUpdatedValue(for: characteristic.uuid, data: data)
+    }
 
-        // Device Information Service characteristics are plain GATT string reads
-        // (raw UTF-8, no Tandem [packetsRemaining][transactionId] framing). They
-        // MUST NOT flow into receive(data:on:), which would mis-read the first
-        // byte as packetsRemaining and either buffer forever or drop the value.
-        // The decode decision is a pure function (TandemPeripheralManager
-        // .decodeDISValue) so it is unit-testable without a CBCharacteristic,
-        // which has no public initializer. Model is captured-and-logged only (no
-        // state field yet, by decision); serial is persisted into pumpSerialNumber.
+    // Core of the value-update callback, extracted so it is drivable offline.
+    //
+    // Device Information Service characteristics are plain GATT string reads
+    // (raw UTF-8, no Tandem [packetsRemaining][transactionId] framing). They
+    // MUST NOT flow into receive(data:on:), which would mis-read the first
+    // byte as packetsRemaining and either buffer forever or drop the value.
+    // The decode decision is a pure function (TandemPeripheralManager
+    // .decodeDISValue) so it is unit-testable without a CBCharacteristic.
+    //
+    // Both DIS values are captured into DIAGNOSTIC-ONLY state fields
+    // (disReportedSerialRaw / disReportedModelRaw) and are NEVER written into
+    // pumpSerialNumber. Capture from a physical Mobi — confirmed independently via
+    // nRF Connect — shows the pump's DIS serial (0x2A25) is "bi 883", a fragment
+    // of the advertised BLE name, not the real serial; writing it into the
+    // identity field would silently corrupt keying/display/identity. Pump identity
+    // and secret keying are keyed on the BLE peripheral UUID (WP6/M1), never on any
+    // DIS value.
+    func handleUpdatedValue(for uuid: CBUUID, data: Data) {
         let hex = data.map { String(format: "%02X", $0) }.joined()
-        switch TandemPeripheralManager.decodeDISValue(uuid: characteristic.uuid, data: data) {
+        switch TandemPeripheralManager.decodeDISValue(uuid: uuid, data: data) {
         case .serial(let serial):
             logger.info("DIS serial (0x2A25) raw=\(hex) utf8=\(serial)")
-            pumpManager?.updateState { $0.pumpSerialNumber = serial }
+            pumpManager?.updateState { $0.disReportedSerialRaw = serial }
             return
         case .serialUndecodable:
             logger.info("DIS serial (0x2A25) raw=\(hex) utf8=<empty-or-non-utf8; not stored>")
             return
         case .model(let model):
             logger.info("DIS model (0x2A24) raw=\(hex) utf8=\(model ?? "<non-utf8>")")
+            pumpManager?.updateState { $0.disReportedModelRaw = model }
             return
         case .passthrough:
             break
         }
 
-        receive(data: data, on: characteristic.uuid)
+        receive(data: data, on: uuid)
     }
 
     /// Pure decode decision for inbound Device Information Service reads, factored

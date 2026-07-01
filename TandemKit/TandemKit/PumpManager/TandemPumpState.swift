@@ -55,6 +55,14 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
     public var pumpSerialNumber: String
     public var firmwareVersion: String
 
+    // Diagnostic-only capture of the raw Device Information Service reads
+    // (0x2A25 serial / 0x2A24 model). The Mobi's DIS serial is a fragment of the
+    // advertised BLE name ("bi 883"), not the real serial, so these are recorded
+    // for diagnostics ONLY and must NEVER feed identity, keying, or serial display.
+    // Pump identity and secret keying are keyed on the BLE peripheral UUID (WP6/M1).
+    public var disReportedSerialRaw: String?
+    public var disReportedModelRaw: String?
+
     // Last known pump readings
     public var reservoirUnits: Double     // whole units
     public var batteryPercent: UInt8
@@ -103,6 +111,8 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
         serverNonce3Hex = nil
         pumpSerialNumber = ""
         firmwareVersion = ""
+        disReportedSerialRaw = nil
+        disReportedModelRaw = nil
         reservoirUnits = 0
         batteryPercent = 0
         basalState = .active
@@ -135,6 +145,8 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
         serverNonce3Hex          = rawValue["serverNonce3Hex"] as? String
         pumpSerialNumber         = rawValue["pumpSerialNumber"] as? String ?? ""
         firmwareVersion          = rawValue["firmwareVersion"] as? String ?? ""
+        disReportedSerialRaw     = rawValue["disReportedSerialRaw"] as? String
+        disReportedModelRaw      = rawValue["disReportedModelRaw"] as? String
         reservoirUnits           = rawValue["reservoirUnits"] as? Double ?? 0
         batteryPercent           = rawValue["batteryPercent"] as? UInt8 ?? 0
         basalState               = (rawValue["basalState"] as? TandemBasalState.RawValue).flatMap(TandemBasalState.init) ?? .active
@@ -163,6 +175,8 @@ public final class TandemPumpState: RawRepresentable, @unchecked Sendable {
         // Writing them to this plaintext dictionary is the defect M1 closes.
         v["pumpSerialNumber"]     = pumpSerialNumber
         v["firmwareVersion"]      = firmwareVersion
+        v["disReportedSerialRaw"] = disReportedSerialRaw
+        v["disReportedModelRaw"]  = disReportedModelRaw
         v["reservoirUnits"]       = reservoirUnits
         v["batteryPercent"]       = batteryPercent
         v["basalState"]           = basalState.rawValue
