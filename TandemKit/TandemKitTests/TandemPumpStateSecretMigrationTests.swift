@@ -106,4 +106,61 @@ final class TandemPumpStateSecretMigrationTests: XCTestCase {
         XCTAssertNotEqual(store.secret(forService: keyFor(uuidA, "derivedSecretHex")),
                           store.secret(forService: keyFor(uuidB, "derivedSecretHex")))
     }
+
+    // MARK: - Deactivation purge (best-effort, live-UUID)
+
+    // 7. Purge on deactivation: all three UUID_A secrets are deleted; UUID_B's
+    //    survive (per-UUID isolation on the delete path too). Drives the
+    //    synchronous purge core (factored out of purgePairingSecrets() the same
+    //    way runSecretMigration is factored out of migrateSecretsSync) with a
+    //    known UUID — the public entry reads the UUID from the live peripheral,
+    //    which an offline manager never has.
+    func testPurgeDeletesAllThreeSecretsForUUIDOnly() {
+        let store = InMemorySecretStore()
+        let pm = TandemPumpManager(state: legacyState(code: "482163", secret: "SECRET_A", nonce: "NA"),
+                                   secretStore: store)
+        pm.runSecretMigration(uuid: uuidA)
+        store.setSecret("SECRET_B", forService: keyFor(uuidB, "derivedSecretHex"))
+        XCTAssertNotNil(store.secret(forService: keyFor(uuidA, "pairingCode")))
+        XCTAssertNotNil(store.secret(forService: keyFor(uuidA, "derivedSecretHex")))
+        XCTAssertNotNil(store.secret(forService: keyFor(uuidA, "serverNonce3Hex")))
+
+        pm.purgePairingSecrets(uuid: uuidA)
+
+        XCTAssertNil(store.secret(forService: keyFor(uuidA, "pairingCode")))
+        XCTAssertNil(store.secret(forService: keyFor(uuidA, "derivedSecretHex")))
+        XCTAssertNil(store.secret(forService: keyFor(uuidA, "serverNonce3Hex")))
+        XCTAssertEqual(store.secret(forService: keyFor(uuidB, "derivedSecretHex")), "SECRET_B",
+                       "purging one pump's secrets must not touch another's")
+    }
+
+    // 8. Idempotence: a second purge of already-absent keys is a clean no-op.
+    func testPurgeIsIdempotent() {
+        let store = InMemorySecretStore()
+        let pm = TandemPumpManager(state: legacyState(code: "482163", secret: "S", nonce: "N"),
+                                   secretStore: store)
+        pm.runSecretMigration(uuid: uuidA)
+        pm.purgePairingSecrets(uuid: uuidA)
+        pm.purgePairingSecrets(uuid: uuidA)
+        XCTAssertNil(store.secret(forService: keyFor(uuidA, "pairingCode")))
+        XCTAssertNil(store.secret(forService: keyFor(uuidA, "derivedSecretHex")))
+        XCTAssertNil(store.secret(forService: keyFor(uuidA, "serverNonce3Hex")))
+    }
+
+    // 9. Best-effort limitation, pinned: with no resident peripheral (the
+    //    offline manager's central factory is nil, so no peripheral ever
+    //    exists), the public purge is a no-op and the secrets survive. This is
+    //    the documented Delete-Pump-while-disconnected gap the deferred
+    //    persist-the-UUID follow-up will close.
+    func testPurgeWithoutResidentPeripheralIsNoOp() {
+        let store = InMemorySecretStore()
+        let pm = TandemPumpManager(state: legacyState(code: "482163", secret: "S", nonce: "N"),
+                                   secretStore: store)
+        pm.runSecretMigration(uuid: uuidA)
+
+        pm.purgePairingSecrets()
+
+        XCTAssertEqual(store.secret(forService: keyFor(uuidA, "derivedSecretHex")), "S",
+                       "no live peripheral UUID -> purge must be a no-op, not a guess")
+    }
 }

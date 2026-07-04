@@ -54,6 +54,12 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
     private var peripheral: CBPeripheral?
     private var peripheralManager: TandemPeripheralManager?
 
+    /// The BLE identifier of the currently-resident peripheral, if any. Used by
+    /// TandemPumpManager to purge peripheral-UUID-keyed pairing secrets on
+    /// deactivation. nil when no peripheral is resident (e.g. deactivation while
+    /// never connected this launch) — the purge is best-effort by design.
+    var currentPeripheralUUID: UUID? { peripheral?.identifier }
+
     #if DEBUG
     // Observe-only diagnostic tap, forwarded to the per-connection peripheral
     // manager when one exists. Defaults to nil; production never sets it. Set

@@ -350,6 +350,11 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
     }
 
     public func notifyDelegateOfDeactivation(completion: @escaping () -> Void) {
+        // Purge Keychain pairing secrets while the manager (and its bleManager,
+        // which holds the live peripheral UUID the keys are scoped by) still
+        // exists. The queued purge retains self, so it completes even though
+        // Loop discards the manager after the delegate callback.
+        purgePairingSecrets()
         delegateQueue.async {
             self.pumpManagerDelegate?.pumpManagerWillDeactivate(self)
             completion()
@@ -569,6 +574,32 @@ public final class TandemPumpManager: PumpManager, ObservableObject {
             self.secretStore.setSecret(self.state.pairingCode.isEmpty ? nil : self.state.pairingCode, forService: codeKey)
             self.secretStore.setSecret(self.state.derivedSecretHex, forService: secretKey)
             self.secretStore.setSecret(self.state.serverNonce3Hex, forService: nonceKey)
+        }
+    }
+
+    // Best-effort purge of the three peripheral-UUID-keyed pairing secrets on
+    // deactivation, so a reset or swapped pump re-pairs cleanly instead of
+    // authenticating against orphaned credentials. Keyed on the LIVE peripheral
+    // UUID only: if no peripheral is resident (Delete Pump while disconnected)
+    // this is a no-op — a known partial fix; the complete fix (persist the
+    // paired peripheral UUID in state and purge by it unconditionally) is a
+    // deliberate follow-up. Hops stateQueue like persistSecrets; the queued
+    // block retains self, so the Keychain delete does not depend on the
+    // manager surviving deactivation.
+    func purgePairingSecrets() {
+        guard let uuid = bleManager?.currentPeripheralUUID else { return }
+        stateQueue.async {
+            self.purgePairingSecrets(uuid: uuid)
+        }
+    }
+
+    // Synchronous core, factored out (mirroring runSecretMigration) so tests
+    // can drive it with a known UUID on the calling thread without faking a
+    // resident peripheral. Reuses secretServiceKey so the delete keys can never
+    // drift from the write path.
+    func purgePairingSecrets(uuid: UUID) {
+        for field in ["pairingCode", "derivedSecretHex", "serverNonce3Hex"] {
+            secretStore.setSecret(nil, forService: secretServiceKey(uuid, field: field))
         }
     }
 
