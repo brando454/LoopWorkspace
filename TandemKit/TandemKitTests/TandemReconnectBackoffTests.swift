@@ -23,6 +23,7 @@
 //  UI module to avoid pulling TandemKitUI into the xctest host.
 
 import XCTest
+import CoreBluetooth
 import LoopKit
 @testable import TandemKit
 
@@ -134,5 +135,123 @@ private final class CountingStatusObserver: PumpManagerStatusObserver {
                      didUpdate status: PumpManagerStatus,
                      oldStatus: PumpManagerStatus) {
         updateCount += 1
+    }
+}
+
+// MARK: - Single guarded connect choke point (duplicate-connect fix)
+
+// The bench Mobi accepts exactly one central connection. Overlapping
+// central.connect sequences — a second connect issued while the first is still
+// .connecting — collide and the pump drops the link with CBError.code=7
+// pre-auth. All five connect sites in TandemBLEManager route through the
+// connectIfIdle choke point, which connects only from .disconnected. These
+// tests prove a second trigger against an in-flight (.connecting) peripheral
+// issues NO second connect, and that the guard does not block a legitimate
+// reconnect of an idle peripheral.
+//
+// Doubles: CBPeripheral has no public initializer, so the stub is allocated via
+// the ObjC runtime (+new); NS_UNAVAILABLE is compile-time only. CBPeripheral's
+// real designated initializer registers a KVO observer on "delegate" that its
+// dealloc unconditionally removes — +new skips that, so the factory re-adds it
+// to keep teardown from throwing. The recording central subclasses a real
+// CBCentralManager WITHOUT the state-restoration identifier, so the eager TCC
+// authorization probe the nil-factory seam exists to avoid never runs; every
+// radio-touching method is overridden to record or no-op.
+
+private final class StubStatePeripheral: CBPeripheral {
+    var stubbedState: CBPeripheralState = .disconnected
+    override var state: CBPeripheralState { stubbedState }
+    override var name: String? { "Tandem Mobi 883" }
+
+    static func make() -> StubStatePeripheral {
+        let obj = (StubStatePeripheral.self as AnyObject)
+            .perform(NSSelectorFromString("new"))!
+            .takeRetainedValue()
+        let p = obj as! StubStatePeripheral
+        p.addObserver(p, forKeyPath: "delegate", options: .new, context: nil)
+        return p
+    }
+}
+
+private final class RecordingCentral: CBCentralManager {
+    private(set) var connectedPeripherals: [CBPeripheral] = []
+    var onConnect: ((CBPeripheral) -> Void)?
+
+    override var state: CBManagerState { .poweredOn }
+
+    override func connect(_ peripheral: CBPeripheral, options: [String: Any]?) {
+        connectedPeripherals.append(peripheral)
+        onConnect?(peripheral)
+    }
+
+    override func stopScan() {}
+    override func scanForPeripherals(withServices serviceUUIDs: [CBUUID]?, options: [String: Any]?) {}
+    override func cancelPeripheralConnection(_ peripheral: CBPeripheral) {}
+    override func retrieveConnectedPeripherals(withServices serviceUUIDs: [CBUUID]) -> [CBPeripheral] { [] }
+}
+
+final class TandemSingleConnectGuardTests: XCTestCase {
+
+    private var pumpManager: TandemPumpManager!
+    private var bleManager: TandemBLEManager!
+    private var central: RecordingCentral!
+
+    override func setUp() {
+        super.setUp()
+        let state = TandemPumpState(basalRateSchedule: nil)
+        pumpManager = TandemPumpManager(state: state, centralFactory: { _, _ in nil })
+        let recording = RecordingCentral(delegate: nil, queue: nil)
+        central = recording
+        bleManager = TandemBLEManager(pumpManager: pumpManager, centralFactory: { _, _ in recording })
+    }
+
+    override func tearDown() {
+        bleManager = nil
+        central = nil
+        pumpManager = nil
+        super.tearDown()
+    }
+
+    // The defect this pins: two connect triggers while the first connect is
+    // still in flight (.connecting) must yield exactly ONE central.connect.
+    // Pre-fix, both the power-on re-entry (guarded only on != .connected) and a
+    // re-discovery (unguarded) fired a second overlapping connect.
+    func testSecondTriggerWhileConnectingIssuesNoSecondConnect() {
+        let peripheral = StubStatePeripheral.make()
+        // Mirror the radio: once connect is issued, the peripheral is in flight.
+        central.onConnect = { p in
+            (p as? StubStatePeripheral)?.stubbedState = .connecting
+        }
+
+        // Trigger 1: discovery. Peripheral is idle, so this connects.
+        bleManager.centralManager(central, didDiscover: peripheral,
+                                  advertisementData: [:], rssi: NSNumber(value: -50))
+        XCTAssertEqual(central.connectedPeripherals.count, 1)
+
+        // Trigger 2: power-on re-entry while the connect is in flight.
+        bleManager.centralManagerDidUpdateState(central)
+        XCTAssertEqual(central.connectedPeripherals.count, 1,
+                       "power-on re-entry must not issue an overlapping connect while .connecting")
+
+        // Trigger 3: a duplicate discovery callback — the previously unguarded site.
+        bleManager.centralManager(central, didDiscover: peripheral,
+                                  advertisementData: [:], rssi: NSNumber(value: -50))
+        XCTAssertEqual(central.connectedPeripherals.count, 1,
+                       "re-discovery must not issue an overlapping connect while .connecting")
+    }
+
+    // The guard must not over-block: a peripheral back at .disconnected (the
+    // first connect attempt resolved and dropped) is legitimately reconnectable.
+    func testPowerOnReconnectsAnIdlePeripheral() {
+        let peripheral = StubStatePeripheral.make()
+
+        bleManager.centralManager(central, didDiscover: peripheral,
+                                  advertisementData: [:], rssi: NSNumber(value: -50))
+        XCTAssertEqual(central.connectedPeripherals.count, 1)
+
+        // Still .disconnected (no onConnect state flip): a fresh trigger connects.
+        bleManager.centralManagerDidUpdateState(central)
+        XCTAssertEqual(central.connectedPeripherals.count, 2,
+                       "an idle (.disconnected) peripheral must still reconnect")
     }
 }

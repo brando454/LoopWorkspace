@@ -232,9 +232,9 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
         case .retry(let delay):
             reconnectAttempt += 1
             let work = DispatchWorkItem { [weak self] in
-                guard let self, let central = self.central, let peripheral = self.peripheral else { return }
+                guard let self, let peripheral = self.peripheral else { return }
                 self.reconnectWork = nil
-                central.connect(peripheral)
+                self.connectIfIdle(peripheral)
             }
             reconnectWork = work
             managerQueue.asyncAfter(deadline: .now() + delay, execute: work)
@@ -245,6 +245,22 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
     private func cancelReconnect() {
         reconnectWork?.cancel()
         reconnectWork = nil
+    }
+
+    /// The single sanctioned entry point for initiating a BLE connection.
+    /// CoreBluetooth's central.connect is idempotent-ish but the Mobi accepts
+    /// only one central connection; issuing connect while a connect is already
+    /// in flight (.connecting) or established (.connected) produces overlapping
+    /// sequences that the pump drops with CBError.code=7 pre-auth. Guard on
+    /// .disconnected — NOT `!= .connected`, which would still fire during
+    /// .connecting — so exactly one connect sequence is ever outstanding.
+    private func connectIfIdle(_ peripheral: CBPeripheral) {
+        guard let central else { return }
+        guard peripheral.state == .disconnected else {
+            logger.info("connectIfIdle: skipping connect; peripheral.state=\(peripheral.state.rawValue)")
+            return
+        }
+        central.connect(peripheral)
     }
 
     private func ensureConnected(_ completion: @escaping (Error?) -> Void) {
@@ -269,7 +285,7 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
 
         if let p = peripheral {
             if p.state != .connected {
-                central.connect(p)
+                connectIfIdle(p)
             }
             // else: BLE link up but auth not yet done — wait for authenticationCompleted()
             return
@@ -279,7 +295,7 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
         let existing = central.retrieveConnectedPeripherals(withServices: [TandemServiceUUID.tip])
         if let p = existing.first {
             peripheral = p
-            central.connect(p)
+            connectIfIdle(p)
             return
         }
 
@@ -360,7 +376,7 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
 
         if central.state == .poweredOn {
             if let p = peripheral, p.state != .connected {
-                central.connect(p)
+                connectIfIdle(p)
             }
             // Resume a scan that ensureConnected deferred while the central was
             // still settling (state .unknown/.resetting at the time of the call).
@@ -382,7 +398,7 @@ final class TandemBLEManager: NSObject, CBCentralManagerDelegate, @unchecked Sen
         logger.info("Discovered \(name), connecting…")
         central.stopScan()
         self.peripheral = peripheral
-        central.connect(peripheral)
+        connectIfIdle(peripheral)
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {

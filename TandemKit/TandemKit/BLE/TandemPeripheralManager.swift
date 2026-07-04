@@ -287,6 +287,10 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
         switch TandemPeripheralManager.decodeDISValue(uuid: uuid, data: data) {
         case .serial(let serial):
             logger.info("DIS serial (0x2A25) raw=\(hex) utf8=\(serial)")
+            #if DEBUG
+            // DIAG-PUBLIC: Debug-only unredacted duplicate (see refreshPumpTime).
+            logger.debug("DIAG-PUBLIC DIS serial 0x2A25 raw=\(hex, privacy: .public) utf8=\(serial, privacy: .public)")
+            #endif
             pumpManager?.updateState { $0.disReportedSerialRaw = serial }
             return
         case .serialUndecodable:
@@ -294,6 +298,10 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
             return
         case .model(let model):
             logger.info("DIS model (0x2A24) raw=\(hex) utf8=\(model ?? "<non-utf8>")")
+            #if DEBUG
+            // DIAG-PUBLIC: Debug-only unredacted duplicate (see refreshPumpTime).
+            logger.debug("DIAG-PUBLIC DIS model 0x2A24 raw=\(hex, privacy: .public) utf8=\(model ?? "<non-utf8>", privacy: .public)")
+            #endif
             pumpManager?.updateState { $0.disReportedModelRaw = model }
             return
         case .passthrough:
@@ -626,6 +634,14 @@ final class TandemPeripheralManager: NSObject, CBPeripheralDelegate, @unchecked 
             return
         }
         logger.info("TimeSinceReset ok: uptime=\(resp.pumpTimeSinceReset)s pumpClock=\(String(describing: resp.currentTime))")
+        #if DEBUG
+        // DIAG-PUBLIC: Debug-only unredacted duplicate of the line above. os_log
+        // redacts dynamic interpolations as <private> in on-device Console
+        // captures, which blocks comparing pumpClock against wall-clock UTC to
+        // determine whether the pump epoch is UTC or pump-local. Excluded from
+        // Release by the #if DEBUG guard; must never ship public-marked.
+        logger.debug("DIAG-PUBLIC pumpClock=\(resp.currentTime.timeIntervalSince1970, privacy: .public) pumpClockUTC=\(String(describing: resp.currentTime), privacy: .public) uptime=\(resp.pumpTimeSinceReset, privacy: .public)")
+        #endif
         pumpManager?.updateState { state in
             state.pumpTimeSinceResetAtRead = resp.pumpTimeSinceReset
             state.pumpTimeSinceResetReadAt = Date()
